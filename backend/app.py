@@ -4,6 +4,7 @@ Initialises the SQLite database on startup and mounts all API routes.
 """
 
 from pathlib import Path
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,12 @@ app.add_middleware(
         "http://localhost:5174",
         "http://127.0.0.1:5174",
         "http://localhost:4173",
+        "https://pac-fully.vercel.app",
+        *[
+            origin.strip().rstrip("/")
+            for origin in os.getenv("CORS_ORIGINS", "").split(",")
+            if origin.strip()
+        ],
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -39,7 +46,9 @@ app.include_router(auth_router, prefix="/api")   # /api/auth/...
 app.include_router(router,      prefix="/api")   # /api/estimates/... etc.
 
 # ── Static PDFs ───────────────────────────────────────────────
-PDF_DIR = Path(__file__).resolve().parent.parent / "data" / "pdfs"
+PDF_DIR = Path(
+    os.getenv("PDF_DIR", Path(__file__).resolve().parent.parent / "data" / "pdfs")
+).expanduser()
 PDF_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/pdfs", StaticFiles(directory=str(PDF_DIR)), name="pdfs")
 
