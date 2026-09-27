@@ -1,0 +1,33 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated files
+uploads/*
+data/pdfs/*
+test_output.pdf
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store

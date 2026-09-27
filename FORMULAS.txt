@@ -1,0 +1,190 @@
+PACFULLY COST ESTIMATOR - FORMULA REFERENCE
+===========================================
+
+Purpose
+-------
+This file documents the formulas currently implemented by the application.
+It is a human-readable reference, not a runtime configuration file. Changing a
+formula here does not change the application; update the implementation noted
+under "Code locations" as well.
+
+Notation
+--------
+QTY       = order quantity
+CEILING(x)= round x up to the next whole number
+L, W      = sheet length and width
+Rate      = configured rate for the material or process
+
+
+1. KAPPA BOARD
+--------------
+Effective GSM = GSM at 1 mm x Thickness (mm)
+Sheet Area (m^2) = Sheet Length (mm) x Sheet Width (mm) / 1,000,000
+KG / Sheet = Sheet Area (m^2) x Effective GSM / 1,000
+Base Sheets = CEILING(QTY / UPS)
+Wastage Sheets = CEILING(Base Sheets x Wastage Percent / 100)
+Final Sheets = Base Sheets + Wastage Sheets
+Total KG = Final Sheets x KG / Sheet
+Per Sheet Cost = KG / Sheet x Rate / KG
+Total Cost = Total KG x Rate / KG
+Cost / Box = Total Cost / QTY
+
+The Per Sheet Cost trace value is displayed to 2 decimal places. The Kappa
+total cost and cost per box use the same underlying KG / Sheet and rate values.
+
+Current example:
+  Effective GSM = 1,200 x 1.8 = 2,160
+  Sheet Area = 1,000 x 700 / 1,000,000 = 0.7000 m^2
+  KG / Sheet = 0.7000 x 2,160 / 1,000 = 1.5120 kg
+  Base Sheets = CEILING(1,000 / 2) = 500
+  Wastage Sheets = CEILING(500 x 10 / 100) = 50
+  Final Sheets = 500 + 50 = 550
+  Total KG = 550 x 1.5120 = 831.6000 kg
+  Per Sheet Cost = 1.5120 x INR 80 = INR 120.96 / sheet
+  Total Cost = 831.6000 x INR 80 = INR 66,528.00
+  Cost / Box = INR 66,528.00 / 1,000 = INR 66.528 (displayed as INR 66.53)
+
+
+2. WRAPPER
+----------
+Base Sheets = CEILING(QTY / UPS)
+Wastage Sheets = CEILING(Base Sheets x Wastage Percent / 100)
+Final Sheets = Base Sheets + Wastage Sheets + Make-ready Sheets
+KG / Sheet = Sheet Length (mm) x Sheet Width (mm) x GSM / 1,000,000,000
+Total KG = Final Sheets x KG / Sheet
+Total Cost = Total KG x Rate / KG
+Cost / Box = Total Cost / QTY
+
+
+3. PRINTING
+-----------
+Input Sheets = Wrapper Final Sheets
+
+If Input Sheets <= 1,000:
+  Total Cost = First 1,000 Sheets Rate
+Otherwise:
+  Total Cost = First 1,000 Sheets Rate
+               + (Input Sheets - 1,000) x Additional Rate per Sheet
+
+Default rates by sheet size:
+  15x20: first INR 1,500; additional INR 0.40 per sheet
+  20x28: first INR 3,500; additional INR 0.50 per sheet
+  28x40: first INR 6,500; additional INR 0.80 per sheet
+Unknown sheet sizes use the 28x40 rate.
+
+
+4. LAMINATION
+-------------
+Cost / Sheet = Sheet Length (in) x Sheet Width (in)
+              x Rate per 100 sq.in / 100
+Total Cost = Cost / Sheet x Wrapper Final Sheets
+
+Default rate per 100 sq.in:
+  Thermal = INR 1.10
+  Cold    = INR 0.70
+  Dry     = INR 0.80
+Unknown lamination types use the Thermal rate.
+
+
+5. GLUE
+-------
+For each glue component:
+  Area (m^2) = Area (sq.in) x 0.00064516
+  Glue KG per box = Area (m^2) x GSM / 1,000
+  Component Cost = Glue KG per box x Rate / KG x QTY
+
+Total Glue Cost = Sum of Component Costs for all glue components
+
+
+6. PUNCHING
+-----------
+Production Hours = QTY / Machine Speed (sheets per hour)
+For Wrapper material, punching input quantity = Wrapper Final Sheets.
+For other punching materials, punching input quantity = QTY.
+Total Cost = (Production Hours + Setup Hours)
+             x Machine Rate per Hour
+
+Default speed and setup time:
+  Kappa:       400 sheets/hour, 0.5 setup hours
+  Wrapper:     600 sheets/hour, 0.5 setup hours
+  FBB:         600 sheets/hour, 0.5 setup hours
+  Duplex:      600 sheets/hour, 0.5 setup hours
+  Foam/EVA/EPE:500 sheets/hour, 0.5 setup hours
+Unknown materials use the Kappa settings.
+
+
+7. EMBELLISHMENTS
+-----------------
+Raw Cost = Area (sq.in) x Rate per sq.in + Setup Cost
+Total Cost = Maximum(Raw Cost, Minimum Cost)
+
+
+8. ACCESSORIES
+--------------
+Accessory Cost = Quantity per Box x Unit Cost x QTY
+Total Accessories Cost = Sum of Accessory Costs
+
+
+9. CONVERSION
+-------------
+Current calculation scaffold:
+  Total Cost = Machine Rate x Machine Hours
+               + Labour Rate x Labour Hours
+               + Setup Cost
+
+The module is marked CONFIGURATION REQUIRED in the application. Confirm the
+business formula before treating this output as a configured costing result.
+
+
+10. EB
+------
+EB is currently marked CONFIGURATION REQUIRED. The calculation engine returns
+zero cost and labels its formula as not defined. The eb_method and eb_value
+inputs are not currently used to calculate EB cost.
+
+
+11. ESTIMATE TOTALS, WEIGHTAGE, AND MARGIN
+------------------------------------------
+Total Manufacturing Cost = Sum of all module Total Costs
+Module Cost / Box = Module Total Cost / QTY
+Overall Cost / Box = Total Manufacturing Cost / QTY
+Module Weightage (%) = Module Total Cost / Total Manufacturing Cost x 100
+                       (0 when Total Manufacturing Cost is 0)
+
+Selling Price / Box = Overall Cost / Box / (1 - Margin Percent / 100)
+Order Value = Selling Price / Box x QTY
+
+
+12. QUOTATION / PROFORMA TOTALS
+-------------------------------
+Subtotal = Selling Price / Box x QTY
+GST Amount = Subtotal x GST Percent / 100
+Grand Total = Subtotal + GST Amount
+
+
+RATE INPUT NOTE
+---------------
+Kappa and Wrapper resolve the Estimate Override first, then the configured
+Master Rate, then the existing backend fallback rate. Lamination selects its
+Master Rate from the lamination type table; an Estimate Override replaces that
+rate. Printing uses the selected sheet-size rate table as its default
+first-tier rate; an Estimate Override replaces that first-tier rate, while the
+table's additional-sheet rate remains unchanged. Glue components use their own
+configured rates, and Punching uses the configured machine rate per hour.
+
+
+ROUNDING AND DISPLAY
+--------------------
+The costing engine rounds line totals, cost per box, overall totals, selling
+price, and order value to 4 decimal places in its response. Module weightage is
+also rounded to 4 decimal places. The UI commonly formats currency to 2 decimal
+places, so a response value such as 66.528 is displayed as 66.53.
+
+
+CODE LOCATIONS
+--------------
+Primary costing formulas, module-only calculators, and rate tables: backend/routes.py
+Quotation subtotal, GST, and grand total: backend/routes.py, create_quotation()
+Module calculation buttons, traces, and result display: frontend/src/pages/CostEstimator.jsx
+Shared calculation trace row styling: frontend/src/components/CostCard.jsx,
+  CalcTracePanel

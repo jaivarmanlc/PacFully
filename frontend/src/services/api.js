@@ -1,0 +1,80 @@
+/**
+ * Pacfully API service layer.
+ * Every request automatically attaches the stored JWT as a Bearer token.
+ */
+
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+/** Read the JWT from localStorage (written by AuthContext after login). */
+function getToken() {
+  return localStorage.getItem('pac_token') || '';
+}
+
+async function request(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  const tok = getToken();
+  if (tok) headers['Authorization'] = `Bearer ${tok}`;
+
+  const opts = { method, headers };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+
+  const res = await fetch(`${BASE}${path}`, opts);
+
+  if (res.status === 401) {
+    // Token expired or invalid — clear session and reload to /login
+    localStorage.removeItem('pac_token');
+    localStorage.removeItem('pac_user');
+    window.location.href = '/login';
+    throw new Error('Session expired');
+  }
+
+  if (!res.ok) {
+    let msg = `API ${method} ${path} failed (${res.status})`;
+    try { const j = await res.json(); msg = j.detail || msg; } catch {}
+    throw new Error(msg);
+  }
+
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+const get  = (path)       => request('GET',    path);
+const post = (path, body) => request('POST',   path, body);
+const del  = (path)       => request('DELETE', path);
+
+// ── Health ─────────────────────────────────────────────────
+export const checkHealth = () => get('/health');
+
+// ── Costing engine (stateless) ──────────────────────────────
+export const calculateEstimate = (payload) => post('/estimates/calculate', payload);
+
+// ── Estimates ───────────────────────────────────────────────
+export const listEstimates    = ()    => get('/estimates');
+export const getEstimate      = (id)  => get(`/estimates/${id}`);
+export const saveEstimate     = (p)   => post('/estimates', p);
+export const finalizeEstimate = (id)  => post(`/estimates/${id}/finalize`);
+export const deleteEstimate   = (id)  => del(`/estimates/${id}`);
+
+// ── Customers ───────────────────────────────────────────────
+export const listCustomers  = ()    => get('/customers');
+export const getCustomer    = (id)  => get(`/customers/${id}`);
+export const createCustomer = (b)   => post('/customers', b);
+export const deleteCustomer = (id)  => del(`/customers/${id}`);
+
+// ── Quotations ──────────────────────────────────────────────
+export const listQuotations  = ()    => get('/quotations');
+export const getQuotation    = (id)  => get(`/quotations/${id}`);
+export const createQuotation = (b)   => post('/quotations', b);
+export const deleteQuotation = (id)  => del(`/quotations/${id}`);
+
+/** PDF URL for inline preview or download. */
+export const pdfUrl = (quotationId) => `${BASE}/quotations/${quotationId}/pdf`;
+
+// ── Audit log ───────────────────────────────────────────────
+export const getAuditLog = () => get('/audit-log');
+
+// ── Auth ─────────────────────────────────────────────────────
+export const getMe        = ()  => get('/auth/me');
+export const listUsers    = ()  => get('/auth/users');
+export const createUser   = (b) => post('/auth/users', b);
+export const deleteUser   = (id)=> del(`/auth/users/${id}`);

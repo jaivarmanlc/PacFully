@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pacfully Cost Estimator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{--orange:#FF5A3A;--orange2:#FF7A5C;--orange-l:#FFF1ED;--bg:#F7F8FA;--text:#202124;--text2:#6B7280;--bd:#E8EAED;
+padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);}
+*{box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100%}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#F7F8FA;--text:#202124}}
+.card{background:#fff;border:1px solid var(--bd);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 10px rgba(0,0,0,.03)}
+.navbtn{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:10px;color:var(--text2);font-size:13.5px;font-weight:500;cursor:pointer;white-space:nowrap}
+.navbtn:hover{background:var(--orange-l);color:var(--orange)}
+.navbtn.active{background:var(--orange-l);color:var(--orange);font-weight:700}
+.navsub{padding-left:30px;font-size:12.5px}
+label{font-size:11.5px;font-weight:600;color:var(--text2);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em}
+input,select{width:100%;border:1px solid var(--bd);border-radius:9px;padding:8px 10px;font-size:13.5px;background:#fff;color:var(--text)}
+input:focus,select:focus{outline:2px solid var(--orange2);border-color:var(--orange)}
+.btn{background:var(--orange);color:#fff;font-weight:600;font-size:13.5px;padding:9px 16px;border-radius:10px;border:none;cursor:pointer}
+.btn:hover{background:#e64a2c}
+.btn-o{background:#fff;color:var(--orange);border:1px solid var(--orange);font-weight:600;font-size:13px;padding:8px 14px;border-radius:10px;cursor:pointer}
+.pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:99px}
+.mtab{padding:7px 13px;border-radius:9px;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;border:1px solid transparent}
+.mtab.active{background:var(--orange);color:#fff}
+.out{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px dashed var(--bd)}
+.out b{color:var(--text)}
+::-webkit-scrollbar{height:6px;width:6px}::-webkit-scrollbar-thumb{background:#ddd;border-radius:9px}
+.view{display:none}.view.active{display:block}
+</style>
+</head>
+<body>
+<div class="flex h-screen overflow-hidden">
+<!-- SIDEBAR -->
+<aside class="w-64 shrink-0 bg-white border-r overflow-y-auto p-4 hidden md:block" style="border-color:var(--bd)">
+  <div class="flex items-center gap-2 px-2 mb-6">
+    <svg width="30" height="30" viewBox="0 0 40 40"><g fill="#FF5A3A"><path d="M20 2 L24 16 L20 20 L16 16 Z"/><path d="M38 20 L24 24 L20 20 L24 16 Z"/><path d="M20 38 L16 24 L20 20 L24 24 Z"/><path d="M2 20 L16 16 L20 20 L16 24 Z"/></g><rect x="4" y="4" width="5" height="5" rx="1" fill="#2EC4B6"/></svg>
+    <div><div class="font-extrabold text-lg leading-none"><span style="color:#202124">Pac</span><span style="color:#FF5A3A">fully</span></div><div class="text-[9px] tracking-widest text-gray-400 font-semibold">PACKAGING ENGINEERED</div></div>
+  </div>
+  <nav id="nav" class="space-y-0.5 text-sm"></nav>
+</aside>
+
+<!-- MAIN -->
+<main class="flex-1 overflow-y-auto">
+  <header class="sticky top-0 z-10 bg-white border-b flex items-center justify-between px-5 py-3" style="border-color:var(--bd)">
+    <div class="md:hidden font-extrabold">Pac<span style="color:#FF5A3A">fully</span></div>
+    <h1 id="pageTitle" class="font-bold text-[15px]">Dashboard / Cost Intelligence</h1>
+    <div class="flex items-center gap-2 text-xs text-gray-400">Demo UI · v1.0</div>
+  </header>
+  <div class="p-5 max-w-6xl mx-auto" id="content"></div>
+</main>
+</div>
+
+<script>
+/* ---------- NAV ---------- */
+const NAV=[
+ {id:'dashboard',label:'Dashboard'},
+ {id:'estimator',label:'Cost Estimator'},
+ {id:'estimates',label:'Estimates'},
+ {id:'customers',label:'Customers'},
+ {id:'reports',label:'Reports'},
+ {id:'master',label:'Master Configuration'},
+ {id:'quotation',label:'Quotation'},
+ {id:'proforma',label:'Proforma'},
+ {id:'admin',label:'Settings / Users / Audit Log'},
+];
+const navEl=document.getElementById('nav');
+NAV.forEach(n=>{const b=document.createElement('div');b.className='navbtn';b.textContent=n.label;b.onclick=()=>show(n.id);b.id='nb_'+n.id;navEl.appendChild(b);});
+
+function show(id){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('v_'+id).classList.add('active');
+  document.querySelectorAll('.navbtn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('nb_'+id).classList.add('active');
+  document.getElementById('pageTitle').textContent=NAV.find(n=>n.id===id).label;
+  if(id==='dashboard'||id==='reports') renderDash();
+  if(id==='quotation'||id==='proforma') renderDocs();
+}
+
+/* ---------- MASTER DATA ---------- */
+const PRINT_RATES={'15x20':{first:1500,add:.40},'20x28':{first:3500,add:.50},'28x40':{first:6500,add:.80}};
+const LAM_RATES={thermal:1.10,cold:0.70,dry:0.80};
+const PUNCH={'Kappa':{speed:400,setup:.5},'Wrapper':{speed:600,setup:.5},'FBB':{speed:600,setup:.5},'Duplex':{speed:600,setup:.5},'Foam/EVA/EPE':{speed:500,setup:.5}};
+const MASTER={kappaRate:80,kappaGsm1:400,wrapperRate:95,wrapperMakeready:150,glueRate:90,glueGsm:20,punchRate:400};
+const fmt=n=>'₹'+(Number(n)||0).toLocaleString('en-IN',{maximumFractionDigits:2});
+const val=id=>document.getElementById(id).value;
+let costs={},wrapperFinal=0;
+const estimates=[]; const customers=[{name:'Aurelia Cosmetics',city:'Mumbai'},{name:'Verve Spirits Co.',city:'Bengaluru'}];
+
+/* ---------- VIEWS CONTAINER ---------- */
+const content=document.getElementById('content');
+function mkView(id){const d=document.createElement('div');d.className='view';d.id='v_'+id;content.appendChild(d);return d;}
+
+/* ===== DASHBOARD ===== */
+const vDash=mkView('dashboard');
+vDash.innerHTML=`
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5" id="kpis"></div>
+<div class="grid md:grid-cols-2 gap-5">
+ <div class="card p-5"><h3 class="font-bold text-sm mb-3">Cost Allocation by Module</h3><div id="dashBars" class="space-y-2 text-xs"></div></div>
+ <div class="card p-5"><h3 class="font-bold text-sm mb-3">Saved Estimates</h3><div id="dashList" class="text-xs text-gray-500">No estimates finalized yet — go to Cost Estimator → Save Estimate.</div></div>
+</div>
+<div class="grid md:grid-cols-3 gap-5 mt-5 text-xs text-gray-400">
+ <div class="card p-4">Master Override Analytics — <b class="text-gray-600">Not yet configured</b></div>
+ <div class="card p-4">Costing-Time Analytics — <b class="text-gray-600">Not yet configured</b></div>
+ <div class="card p-4">Location / Salesperson Filters — <b class="text-gray-600">Not yet configured</b></div>
+</div>`;
+function renderDash(){
+  const n=estimates.length;
+  const avgQ=n?estimates.reduce((a,e)=>a+e.orderValue,0)/n:0;
+  const avgCB=n?estimates.reduce((a,e)=>a+e.costBox,0)/n:0;
+  const avgM=n?estimates.reduce((a,e)=>a+e.margin,0)/n:0;
+  document.getElementById('kpis').innerHTML=[
+   ['Quotations',n],['Quoted Value',fmt(estimates.reduce((a,e)=>a+e.orderValue,0))],
+   ['Avg Cost/Box',fmt(avgCB)],['Avg Margin',(avgM||0).toFixed(1)+'%']
+  ].map(([l,v])=>`<div class="card p-4"><div class="text-[11px] text-gray-400 font-semibold uppercase">${l}</div><div class="text-xl font-extrabold mt-1">${v}</div></div>`).join('');
+  const last=estimates[estimates.length-1];
+  const src=last?last.costs:{};
+  const tot=Object.values(src).reduce((a,b)=>a+b,0)||1;
+  document.getElementById('dashBars').innerHTML=Object.keys(costs).length? Object.entries(last?src:costs).map(([k,v])=>{
+    const pct=(v/(tot||1)*100).toFixed(1);
+    return `<div><div class="flex justify-between mb-1"><span>${k}</span><span class="font-semibold">${pct}%</span></div><div class="h-2 rounded-full bg-gray-100"><div class="h-2 rounded-full" style="width:${pct}%;background:var(--orange)"></div></div></div>`;
+  }).join('') : '<span class="text-gray-400">Not yet configured — run an estimate first.</span>';
+  document.getElementById('dashList').innerHTML = n? estimates.map(e=>`<div class="flex justify-between py-1.5 border-b" style="border-color:var(--bd)"><span>${e.customer} — ${e.product}</span><b>${fmt(e.orderValue)}</b></div>`).join('') : document.getElementById('dashList').innerHTML;
+}
+
+/* ===== CUSTOMERS ===== */
+const vCust=mkView('customers');
+vCust.innerHTML=`<div class="flex justify-between items-center mb-4"><h2 class="font-bold">Customers</h2>
+<div class="flex gap-2"><input id="c_new" placeholder="New customer name" class="w-48"><button class="btn" onclick="addCustomer()">+ Add</button></div></div>
+<div class="card divide-y" style="border-color:var(--bd)" id="custList"></div>`;
+function addCustomer(){const n=val('c_new');if(!n)return;customers.push({name:n,city:'—'});document.getElementById('c_new').value='';renderCust();fillCustSelect();}
+function renderCust(){document.getElementById('custList').innerHTML=customers.map(c=>`<div class="p-3.5 flex justify-between text-sm"><span class="font-medium">${c.name}</span><span class="text-gray-400">${c.city}</span></div>`).join('');}
+renderCust();
+
+/* ===== ESTIMATES ===== */
+const vEst=mkView('estimates');
+vEst.innerHTML=`<h2 class="font-bold mb-4">Estimates</h2><div class="card divide-y" style="border-color:var(--bd)" id="estList"><div class="p-4 text-sm text-gray-400">No estimates saved yet.</div></div>`;
+function renderEstList(){document.getElementById('estList').innerHTML=estimates.length?estimates.map((e,i)=>`<div class="p-3.5 flex justify-between items-center text-sm"><div><div class="font-semibold">${e.customer} — ${e.product}</div><div class="text-gray-400 text-xs">Qty ${e.qty} · Cost/Box ${fmt(e.costBox)} · Margin ${e.margin}%</div></div><b>${fmt(e.orderValue)}</b></div>`).join(''):'<div class="p-4 text-sm text-gray-400">No estimates saved yet.</div>';}
+
+/* ===== REPORTS ===== */
+const vRep=mkView('reports');
+vRep.innerHTML=`<h2 class="font-bold mb-4">Reports</h2>
+<div class="grid md:grid-cols-3 gap-3 mb-5 text-xs">
+<div class="card p-3"><label>Customer</label><select><option>All</option></select></div>
+<div class="card p-3"><label>Product</label><select><option>All</option></select></div>
+<div class="card p-3"><label>Date range</label><input type="text" placeholder="All time"></div>
+</div>
+<div class="card p-5"><h3 class="font-bold text-sm mb-3">Cost Component Trend (by saved estimates)</h3><div id="dashBars2" class="space-y-2 text-xs"></div></div>`;
+
+/* ===== MASTER CONFIG ===== */
+const vMaster=mkView('master');
+vMaster.innerHTML=`<h2 class="font-bold mb-1">Master Configuration</h2><p class="text-xs text-gray-400 mb-4">Master values are the default rates. Every value is overridable at the estimate level — changes here do not affect already-finalized estimates.</p>
+<div class="grid md:grid-cols-2 gap-5">
+<div class="card p-5"><h3 class="font-bold text-sm mb-3">Kappa Board</h3>
+ <label>Master Rate (₹/kg)</label><input id="mc_kr" type="number" value="80" oninput="MASTER.kappaRate=+this.value">
+ <label class="mt-3">GSM @ 1mm (reference)</label><input id="mc_kg" type="number" value="400" oninput="MASTER.kappaGsm1=+this.value"></div>
+<div class="card p-5"><h3 class="font-bold text-sm mb-3">Wrapper Material</h3>
+ <label>Master Rate (₹/kg)</label><input type="number" value="95" oninput="MASTER.wrapperRate=+this.value">
+ <label class="mt-3">Default Make-ready Sheets</label><input type="number" value="150" oninput="MASTER.wrapperMakeready=+this.value"></div>
+<div class="card p-5"><h3 class="font-bold text-sm mb-3">Printing (per sheet size)</h3><table class="w-full text-xs"><tr class="text-gray-400"><td>Size</td><td>First 1000</td><td>Additional</td></tr>
+ ${Object.entries(PRINT_RATES).map(([k,v])=>`<tr><td class="py-1">${k}</td><td>₹${v.first}</td><td>₹${v.add}/sheet</td></tr>`).join('')}</table></div>
+<div class="card p-5"><h3 class="font-bold text-sm mb-3">Lamination (per 100 sq.in)</h3><table class="w-full text-xs">
+ ${Object.entries(LAM_RATES).map(([k,v])=>`<tr><td class="py-1 capitalize">${k}</td><td>₹${v}</td></tr>`).join('')}</table></div>
+<div class="card p-5"><h3 class="font-bold text-sm mb-3">Glue</h3><label>Rate (₹/kg)</label><input type="number" value="90" oninput="MASTER.glueRate=+this.value">
+ <label class="mt-3">Application GSM</label><input type="number" value="20" oninput="MASTER.glueGsm=+this.value"></div>
+<div class="card p-5"><h3 class="font-bold text-sm mb-3">Punching</h3><table class="w-full text-xs mb-2">
+ ${Object.entries(PUNCH).map(([k,v])=>`<tr><td class="py-1">${k}</td><td>${v.speed}/hr</td><td>${v.setup*60} min setup</td></tr>`).join('')}</table>
+ <label>Machine Rate (₹/hr)</label><input type="number" value="400" oninput="MASTER.punchRate=+this.value"></div>
+</div>`;
+
+/* ===== ESTIMATOR ===== */
+const vEstm=mkView('estimator');
+const MODULES=['Kappa','Wrapper','Printing','Lamination','Glue','Punching','Embellishments','Accessories','Conversion','EB','Summary'];
+vEstm.innerHTML=`
+<div class="card p-4 mb-4 grid md:grid-cols-4 gap-3">
+ <div><label>Customer</label><select id="q_cust"></select></div>
+ <div><label>Product / Job Name</label><input id="q_prod" value="Luxury Rigid Box"></div>
+ <div><label>Order Quantity</label><input id="q_qty" type="number" value="1500" oninput="calcAll()"></div>
+ <div class="flex items-end"><button class="btn w-full" onclick="saveEstimate()">Save Estimate ✓</button></div>
+</div>
+<div class="flex gap-1.5 flex-wrap mb-4" id="mtabs"></div>
+<div id="mpanels"></div>`;
+function fillCustSelect(){document.getElementById('q_cust').innerHTML=customers.map(c=>`<option>${c.name}</option>`).join('');}
+fillCustSelect();
+document.getElementById('mtabs').innerHTML=MODULES.map((m,i)=>`<div class="mtab ${i==0?'active':''}" id="mt_${m}" onclick="showMod('${m}')">${m}</div>`).join('');
+function showMod(m){document.querySelectorAll('.mtab').forEach(t=>t.classList.remove('active'));document.getElementById('mt_'+m).classList.add('active');document.querySelectorAll('.mpanel').forEach(p=>p.style.display='none');document.getElementById('mp_'+m).style.display='block';}
+const panels=document.getElementById('mpanels');
+function panel(id,html){const d=document.createElement('div');d.className='mpanel card p-5';d.id='mp_'+id;d.style.display=id=='Kappa'?'block':'none';d.innerHTML=html;panels.appendChild(d);}
+
+panel('Kappa',`<div class="grid md:grid-cols-2 gap-6">
+<div class="space-y-3">
+ <div class="grid grid-cols-2 gap-3">
+  <div><label>Thickness (mm)</label><input id="k_thk" type="number" value="2" oninput="calcAll()"></div>
+  <div><label>GSM @ 1mm</label><input id="k_gsm1" type="number" value="400" oninput="calcAll()"></div>
+  <div><label>Sheet L (mm)</label><input id="k_L" type="number" value="710" oninput="calcAll()"></div>
+  <div><label>Sheet W (mm)</label><input id="k_W" type="number" value="1010" oninput="calcAll()"></div>
+  <div><label>Ups</label><input id="k_ups" type="number" value="4" oninput="calcAll()"></div>
+  <div><label>Wastage %</label><input id="k_waste" type="number" value="8" oninput="calcAll()"></div>
+  <div class="col-span-2"><label>Rate ₹/kg <span class="text-gray-400 normal-case">(master 80, overridable)</span></label><input id="k_rate" type="number" value="80" oninput="calcAll()"></div>
+ </div></div>
+<div><div class="text-xs font-bold text-gray-400 uppercase mb-2">How was this calculated?</div><div id="k_out"></div></div></div>`);
+
+panel('Wrapper',`<div class="grid md:grid-cols-2 gap-6"><div class="grid grid-cols-2 gap-3">
+ <div><label>GSM</label><input id="w_gsm" type="number" value="128" oninput="calcAll()"></div>
+ <div><label>Ups</label><input id="w_ups" type="number" value="1" oninput="calcAll()"></div>
+ <div><label>Sheet L (mm)</label><input id="w_L" type="number" value="711" oninput="calcAll()"></div>
+ <div><label>Sheet W (mm)</label><input id="w_W" type="number" value="1016" oninput="calcAll()"></div>
+ <div><label>Wastage %</label><input id="w_waste" type="number" value="10" oninput="calcAll()"></div>
+ <div><label>Make-ready sheets</label><input id="w_mr" type="number" value="150" oninput="calcAll()"></div>
+ <div class="col-span-2"><label>Rate ₹/kg</label><input id="w_rate" type="number" value="95" oninput="calcAll()"></div>
+</div><div><div class="text-xs font-bold text-gray-400 uppercase mb-2">How was this calculated?</div><div id="w_out"></div></div></div>`);
+
+panel('Printing',`<div class="grid md:grid-cols-2 gap-6"><div class="space-y-3">
+ <label>Sheet Size</label><select id="p_size" oninput="calcAll()"><option>15x20</option><option>20x28</option><option selected>28x40</option></select>
+ <p class="text-xs text-gray-400">Uses <b>Final Wrapper Sheets</b> from the Wrapper module — not recalculated here.</p>
+</div><div><div class="text-xs font-bold text-gray-400 uppercase mb-2">How was this calculated?</div><div id="p_out"></div></div></div>`);
+
+panel('Lamination',`<div class="grid md:grid-cols-2 gap-6"><div class="grid grid-cols-2 gap-3">
+ <div class="col-span-2"><label>Type</label><select id="l_type" oninput="calcAll()"><option value="thermal">Thermal ₹1.10</option><option value="cold">Cold ₹0.70</option><option value="dry">Dry ₹0.80</option></select></div>
+ <div><label>Sheet L (in)</label><input id="l_L" type="number" value="28" oninput="calcAll()"></div>
+ <div><label>Sheet W (in)</label><input id="l_W" type="number" value="40" oninput="calcAll()"></div>
+</div><div><div class="text-xs font-bold text-gray-400 uppercase mb-2">How was this calculated?</div><div id="l_out"></div></div></div>`);
+
+panel('Glue',`<p class="text-xs text-gray-400 mb-3">Based on actual glue-applicable area per component, not the whole sheet.</p>
+<table class="w-full text-xs mb-3"><tr class="text-gray-400 text-left"><td>Component</td><td>Area (sq.in)</td><td>App. GSM</td><td>Rate ₹/kg</td><td class="text-right">Cost</td></tr>
+<tr class="glue-row"><td class="py-1"><input value="Top Wrapper"></td><td><input class="g_area" type="number" value="620" oninput="calcAll()"></td><td><input class="g_gsm" type="number" value="20" oninput="calcAll()"></td><td><input class="g_rate" type="number" value="90" oninput="calcAll()"></td><td class="text-right font-semibold g_cost">₹0</td></tr>
+<tr class="glue-row"><td class="py-1"><input value="Bottom Wrapper"></td><td><input class="g_area" type="number" value="480" oninput="calcAll()"></td><td><input class="g_gsm" type="number" value="20" oninput="calcAll()"></td><td><input class="g_rate" type="number" value="90" oninput="calcAll()"></td><td class="text-right font-semibold g_cost">₹0</td></tr></table>
+<div id="g_out" class="text-sm"></div>`);
+
+panel('Punching',`<div class="grid md:grid-cols-2 gap-6"><div class="space-y-3">
+ <label>Material</label><select id="pn_mat" oninput="calcAll()"><option>Kappa</option><option>Wrapper</option><option>FBB</option><option>Duplex</option><option>Foam/EVA/EPE</option></select>
+ <label>Machine Rate ₹/hr</label><input id="pn_rate" type="number" value="400" oninput="calcAll()">
+</div><div><div class="text-xs font-bold text-gray-400 uppercase mb-2">How was this calculated?</div><div id="pn_out"></div></div></div>`);
+
+panel('Embellishments',`<p class="text-xs text-gray-400 mb-3">Foiling / Spot UV / Embossing / Debossing / Drip-off share this framework.</p>
+<div class="grid md:grid-cols-2 gap-6"><div class="grid grid-cols-2 gap-3">
+ <div class="col-span-2"><label>Process</label><select><option>Foiling — Gold</option><option>Spot UV</option><option>Embossing</option><option>Debossing</option></select></div>
+ <div><label>Area (sq.in)</label><input id="em_area" type="number" value="24" oninput="calcAll()"></div>
+ <div><label>Rate ₹/sq.in</label><input id="em_rate" type="number" value="2.5" oninput="calcAll()"></div>
+ <div><label>Setup ₹</label><input id="em_setup" type="number" value="800" oninput="calcAll()"></div>
+ <div><label>Minimum Charge ₹</label><input id="em_min" type="number" value="1000" oninput="calcAll()"></div>
+</div><div><div class="text-xs font-bold text-gray-400 uppercase mb-2">How was this calculated?</div><div id="em_out"></div></div></div>`);
+
+panel('Accessories',`<table class="w-full text-xs mb-3"><tr class="text-gray-400 text-left"><td>Item</td><td>Qty / Box</td><td>Unit Cost ₹</td><td class="text-right">Total</td></tr>
+<tr class="acc-row"><td class="py-1"><input value="Magnet Snap"></td><td><input class="a_qpb" type="number" value="1" oninput="calcAll()"></td><td><input class="a_uc" type="number" value="3.5" oninput="calcAll()"></td><td class="text-right font-semibold a_cost">₹0</td></tr>
+<tr class="acc-row"><td class="py-1"><input value="Ribbon"></td><td><input class="a_qpb" type="number" value="1" oninput="calcAll()"></td><td><input class="a_uc" type="number" value="1.2" oninput="calcAll()"></td><td class="text-right font-semibold a_cost">₹0</td></tr></table>
+<div id="ac_out" class="text-sm"></div>`);
+
+panel('Conversion',`<div class="text-[11px] font-bold text-orange-600 bg-orange-50 inline-block px-2 py-1 rounded mb-3">CONFIGURATION REQUIRED — exact Pacfully formula not yet finalized; shown as standard machine+labour sum</div>
+<div class="grid md:grid-cols-2 gap-6"><div class="grid grid-cols-2 gap-3">
+ <div><label>Machine Rate ₹/hr</label><input id="cv_mr" type="number" value="0" oninput="calcAll()"></div>
+ <div><label>Machine Hours</label><input id="cv_mh" type="number" value="0" oninput="calcAll()"></div>
+ <div><label>Labour Rate ₹/hr</label><input id="cv_lr" type="number" value="0" oninput="calcAll()"></div>
+ <div><label>Labour Hours</label><input id="cv_lh" type="number" value="0" oninput="calcAll()"></div>
+ <div class="col-span-2"><label>Setup Cost ₹</label><input id="cv_setup" type="number" value="0" oninput="calcAll()"></div>
+</div><div><div class="text-xs font-bold text-gray-400 uppercase mb-2">How was this calculated?</div><div id="cv_out"></div></div></div>`);
+
+panel('EB',`<div class="text-[11px] font-bold text-orange-600 bg-orange-50 inline-block px-2 py-1 rounded mb-3">CONFIGURATION REQUIRED — exact EB formula not yet finalized</div>
+<div class="grid md:grid-cols-2 gap-6"><div class="space-y-3">
+ <label>Method</label><select id="eb_method" oninput="calcAll()"><option value="box">₹ / Box</option><option value="pct">% of Mfg. Cost</option><option value="fixed">Fixed ₹</option></select>
+ <label>Value</label><input id="eb_val" type="number" value="0" oninput="calcAll()">
+</div><div><div class="text-xs font-bold text-gray-400 uppercase mb-2">How was this calculated?</div><div id="eb_out"></div></div></div>`);
+
+panel('Summary',`<div class="grid md:grid-cols-2 gap-6">
+<div><h3 class="font-bold text-sm mb-3">Total Manufacturing Cost</h3><table class="w-full text-xs" id="sumTable"></table></div>
+<div>
+ <h3 class="font-bold text-sm mb-3">Margin &amp; Selling Price</h3>
+ <label>Margin % (of selling price)</label><input id="m_pct" type="number" value="20" oninput="calcAll()">
+ <div class="mt-4 space-y-1" id="sumOut"></div>
+</div></div>`);
+
+/* ---------- CALC ENGINE ---------- */
+function setOut(id,rows){document.getElementById(id).innerHTML=rows.map(([l,v])=>`<div class="out"><span>${l}</span><b>${v}</b></div>`).join('');}
+
+function calcAll(){
+  const qty=+val('q_qty')||0;
+  // KAPPA
+  const k_thk=+val('k_thk'),k_gsm1=+val('k_gsm1'),k_L=+val('k_L'),k_W=+val('k_W'),k_ups=+val('k_ups')||1,k_waste=+val('k_waste')||0,k_rate=+val('k_rate')||0;
+  const k_eff=k_gsm1*k_thk, k_area=k_L*k_W/1e6, k_kgsheet=k_area*k_eff/1000;
+  const k_base=Math.ceil(qty/k_ups), k_wsheets=Math.ceil(k_base*k_waste/100), k_final=k_base+k_wsheets;
+  const k_totalkg=k_final*k_kgsheet, k_cost=k_totalkg*k_rate;
+  costs.Kappa=k_cost;
+  setOut('k_out',[['Effective GSM','GSM@1mm × Thickness = '+k_eff.toFixed(0)],['Sheet Area (m²)',k_area.toFixed(4)],['KG / Sheet',k_kgsheet.toFixed(4)],['Base Sheets',k_base],['Wastage Sheets',k_wsheets],['Final Sheets',k_final],['Total KG',k_totalkg.toFixed(2)],['Total Cost',fmt(k_cost)],['Cost / Box',fmt(qty?k_cost/qty:0)]]);
+
+  // WRAPPER
+  const w_gsm=+val('w_gsm'),w_L=+val('w_L'),w_W=+val('w_W'),w_ups=+val('w_ups')||1,w_waste=+val('w_waste')||0,w_mr=+val('w_mr')||0,w_rate=+val('w_rate')||0;
+  const w_base=Math.ceil(qty/w_ups), w_wsheets=Math.ceil(w_base*w_waste/100);
+  wrapperFinal=w_base+w_wsheets+w_mr;
+  const w_kgsheet=w_L*w_W*w_gsm/1e6, w_totalkg=wrapperFinal*w_kgsheet, w_cost=w_totalkg*w_rate;
+  costs.Wrapper=w_cost;
+  setOut('w_out',[['Base Sheets',w_base],['Wastage Sheets',w_wsheets],['Make-ready',w_mr],['Final Wrapper Sheets',wrapperFinal],['KG / Sheet',w_kgsheet.toFixed(4)],['Total KG',w_totalkg.toFixed(2)],['Total Cost',fmt(w_cost)],['Cost / Box',fmt(qty?w_cost/qty:0)]]);
+
+  // PRINTING
+  const pr=PRINT_RATES[val('p_size')];
+  const printCost= wrapperFinal<=1000? pr.first : pr.first+(wrapperFinal-1000)*pr.add;
+  costs.Printing=printCost;
+  setOut('p_out',[['Final Wrapper Sheets (input)',wrapperFinal],['Tier','First 1000 = '+fmt(pr.first)+' + additional ₹'+pr.add+'/sheet'],['Printing Cost',fmt(printCost)],['Cost / Box',fmt(qty?printCost/qty:0)]]);
+
+  // LAMINATION
+  const lamRate=LAM_RATES[val('l_type')], l_L=+val('l_L'), l_W=+val('l_W');
+  const costPerSheet=l_L*l_W*lamRate/100, lamTotal=costPerSheet*wrapperFinal;
+  costs.Lamination=lamTotal;
+  setOut('l_out',[['Cost / Sheet',fmt(costPerSheet)],['× Final Wrapper Sheets',wrapperFinal],['Total Lamination',fmt(lamTotal)],['Cost / Box',fmt(qty?lamTotal/qty:0)]]);
+
+  // GLUE
+  let glueTotal=0;
+  document.querySelectorAll('.glue-row').forEach(row=>{
+    const area=+row.querySelector('.g_area').value||0, gsm=+row.querySelector('.g_gsm').value||0, rate=+row.querySelector('.g_rate').value||0;
+    const weight=area*0.00064516*gsm/1000, cost=weight*rate;
+    glueTotal+=cost; row.querySelector('.g_cost').textContent=fmt(cost);
+  });
+  costs.Glue=glueTotal;
+  document.getElementById('g_out').innerHTML=`<div class="out"><span>Total Glue Cost</span><b>${fmt(glueTotal)}</b></div><div class="out"><span>Cost / Box</span><b>${fmt(qty?glueTotal/qty:0)}</b></div>`;
+
+  // PUNCHING
+  const pnData=PUNCH[val('pn_mat')], pnRate=+val('pn_rate')||0;
+  const prodTime=qty/pnData.speed, totalTime=prodTime+pnData.setup, pnCost=totalTime*pnRate;
+  costs.Punching=pnCost;
+  setOut('pn_out',[['Speed',pnData.speed+' sheets/hr'],['Setup',(pnData.setup*60)+' min'],['Production Time (hr)',prodTime.toFixed(2)],['Total Time (hr)',totalTime.toFixed(2)],['Punching Cost',fmt(pnCost)],['Cost / Box',fmt(qty?pnCost/qty:0)]]);
+
+  // EMBELLISHMENTS
+  const em_area=+val('em_area')||0, em_rate=+val('em_rate')||0, em_setup=+val('em_setup')||0, em_min=+val('em_min')||0;
+  const emRaw=em_area*em_rate+em_setup, emCost=Math.max(emRaw,em_min);
+  costs.Embellishments=emCost;
+  setOut('em_out',[['Area × Rate + Setup',fmt(emRaw)],['Minimum Charge',fmt(em_min)],['Applied Cost',fmt(emCost)],['Cost / Box',fmt(qty?emCost/qty:0)]]);
+
+  // ACCESSORIES
+  let accTotal=0;
+  document.querySelectorAll('.acc-row').forEach(row=>{
+    const qpb=+row.querySelector('.a_qpb').value||0, uc=+row.querySelector('.a_uc').value||0;
+    const total=qpb*uc*qty; accTotal+=total; row.querySelector('.a_cost').textContent=fmt(total);
+  });
+  costs.Accessories=accTotal;
+  document.getElementById('ac_out').innerHTML=`<div class="out"><span>Total Accessories Cost</span><b>${fmt(accTotal)}</b></div><div class="out"><span>Cost / Box</span><b>${fmt(qty?accTotal/qty:0)}</b></div>`;
+
+  // CONVERSION
+  const cv_mr=+val('cv_mr')||0,cv_mh=+val('cv_mh')||0,cv_lr=+val('cv_lr')||0,cv_lh=+val('cv_lh')||0,cv_setup=+val('cv_setup')||0;
+  const cvTotal=cv_mr*cv_mh+cv_lr*cv_lh+cv_setup;
+  costs.Conversion=cvTotal;
+  setOut('cv_out',[['Machine Cost',fmt(cv_mr*cv_mh)],['Labour Cost',fmt(cv_lr*cv_lh)],['Setup',fmt(cv_setup)],['Total',fmt(cvTotal)],['Cost / Box',fmt(qty?cvTotal/qty:0)]]);
+
+  // EB (based on total excluding EB)
+  const preTotal=Object.entries(costs).filter(([k])=>k!=='EB').reduce((a,[,v])=>a+v,0);
+  const eb_method=val('eb_method'), eb_val=+val('eb_val')||0;
+  let ebCost= eb_method==='box'? eb_val*qty : eb_method==='pct'? preTotal*eb_val/100 : eb_val;
+  costs.EB=ebCost;
+  setOut('eb_out',[['Method',eb_method],['EB Cost',fmt(ebCost)],['Cost / Box',fmt(qty?ebCost/qty:0)]]);
+
+  // TOTAL / SUMMARY
+  const total=Object.values(costs).reduce((a,b)=>a+b,0), costBox=qty?total/qty:0;
+  document.getElementById('sumTable').innerHTML='<tr class="text-gray-400 text-left"><td>Module</td><td>Cost</td><td class="text-right">Weightage</td></tr>'+
+   Object.entries(costs).map(([k,v])=>`<tr><td class="py-1">${k}</td><td>${fmt(v)}</td><td class="text-right">${(total?v/total*100:0).toFixed(1)}%</td></tr>`).join('')+
+   `<tr class="font-bold border-t" style="border-color:var(--bd)"><td class="py-1">Total</td><td>${fmt(total)}</td><td class="text-right">100%</td></tr>`;
+  const marginPct=+val('m_pct')||0;
+  const sellPrice= marginPct<100? costBox/(1-marginPct/100): costBox;
+  const orderValue=sellPrice*qty;
+  document.getElementById('sumOut').innerHTML=[['Manufacturing Cost / Box',fmt(costBox)],['Margin %',marginPct+'%'],['Selling Price / Box',fmt(sellPrice)],['Total Order Value',fmt(orderValue)]].map(([l,v])=>`<div class="out text-sm"><span>${l}</span><b>${v}</b></div>`).join('');
+  window._current={total,costBox,sellPrice,orderValue,marginPct,qty};
+}
+
+function saveEstimate(){
+  calcAll();
+  const c=window._current;
+  estimates.push({customer:val('q_cust'),product:val('q_prod'),qty:c.qty,costBox:c.costBox,margin:c.marginPct,orderValue:c.orderValue,costs:{...costs}});
+  renderEstList(); alert('Estimate saved. View it under Estimates or Dashboard.');
+}
+
+/* ===== QUOTATION / PROFORMA ===== */
+const vQuote=mkView('quotation'); const vProf=mkView('proforma');
+function docShell(kind){return `<div class="card p-8 max-w-2xl mx-auto" id="doc_${kind}"></div><div class="text-center mt-4"><button class="btn-o" onclick="window.print()">Print / Save as PDF</button></div>`;}
+vQuote.innerHTML=docShell('quote'); vProf.innerHTML=docShell('proforma');
+function renderDocs(){
+  const c=window._current||{costBox:0,sellPrice:0,orderValue:0,qty:0};
+  const cust=val('q_cust')||'—', prod=val('q_prod')||'—', date=new Date().toLocaleDateString('en-IN');
+  document.getElementById('doc_quote').innerHTML=`
+   <div class="flex justify-between items-center mb-6"><div class="font-extrabold text-xl">Pac<span style="color:#FF5A3A">fully</span></div><div class="text-xs text-gray-400">Quotation #PAC-Q-1001<br>${date}</div></div>
+   <p class="text-sm mb-1"><b>Customer:</b> ${cust}</p><p class="text-sm mb-4"><b>Product:</b> ${prod}</p>
+   <table class="w-full text-sm mb-4"><tr class="text-gray-400 text-left border-b" style="border-color:var(--bd)"><td class="py-2">Description</td><td>Qty</td><td>Unit Price</td><td class="text-right">Total</td></tr>
+   <tr><td class="py-2">${prod}</td><td>${c.qty}</td><td>${fmt(c.sellPrice)}</td><td class="text-right font-semibold">${fmt(c.orderValue)}</td></tr></table>
+   <p class="text-xs text-gray-400">Validity: 15 days · Lead time: 18–21 working days · Payment: 50% advance, balance before dispatch.</p>
+   <p class="text-[11px] text-gray-300 mt-4">Internal manufacturing cost and margin are not disclosed on customer documents.</p>`;
+  document.getElementById('doc_proforma').innerHTML=`
+   <div class="flex justify-between items-center mb-6"><div class="font-extrabold text-xl">Pac<span style="color:#FF5A3A">fully</span></div><div class="text-xs text-gray-400">Proforma Invoice #PAC-PI-1001<br>${date}</div></div>
+   <p class="text-sm mb-1"><b>Bill To:</b> ${cust}</p><p class="text-sm mb-4"><b>Product:</b> ${prod}</p>
+   <table class="w-full text-sm mb-3"><tr><td class="py-1">Subtotal</td><td class="text-right">${fmt(c.orderValue)}</td></tr>
+   <tr><td class="py-1">GST (18%)</td><td class="text-right">${fmt(c.orderValue*0.18)}</td></tr>
+   <tr class="font-bold border-t" style="border-color:var(--bd)"><td class="py-1">Grand Total</td><td class="text-right">${fmt(c.orderValue*1.18)}</td></tr></table>
+   <p class="text-xs text-gray-400">Bank details available on request. Delivery terms: FOB Mumbai. Payment terms: as agreed.</p>`;
+}
+
+/* ===== ADMIN (Settings / Users / Audit) ===== */
+const vAdmin=mkView('admin');
+vAdmin.innerHTML=`<div class="grid md:grid-cols-3 gap-5">
+<div class="card p-5"><h3 class="font-bold text-sm mb-2">Settings</h3><p class="text-xs text-gray-400">Company profile, tax defaults, document numbering — Not yet configured.</p></div>
+<div class="card p-5"><h3 class="font-bold text-sm mb-2">Users &amp; Roles</h3><p class="text-xs text-gray-400">Role-based access (Admin / Estimator / Viewer) — Not yet configured.</p></div>
+<div class="card p-5"><h3 class="font-bold text-sm mb-2">Audit Log</h3><p class="text-xs text-gray-400">Tracks master overrides and estimate events — Not yet configured.</p></div>
+</div>`;
+
+/* INIT */
+show('dashboard'); calcAll();
+</script>
+</body>
+</html>
