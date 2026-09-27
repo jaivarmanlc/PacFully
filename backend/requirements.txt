@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 sqlalchemy
+psycopg[binary]
 aiosqlite
 pydantic
 pydantic-settings
@@ -16,6 +17,8 @@ reportlab
 httpx
 google-auth
 requests
+bcrypt
+python-jose[cryptography]
 
 pytest
 pytest-asyncio
