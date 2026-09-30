@@ -15,6 +15,7 @@ import { Stepper, RateConfigRow, CalcTracePanel, money } from '../components/Cos
 
 // ── Constants ─────────────────────────────────────────────
 const STEPS = ['Layout & AI Extraction', 'Technical Data', 'Costing Modules', 'Summary & Margin', 'Quotation / Proforma'];
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 const MODULE_TABS = ['Kappa', 'Wrapper', 'Printing', 'Lamination', 'Glue', 'Punching', 'Embellishments', 'Accessories', 'Conversion'];
 
@@ -1195,7 +1196,7 @@ export default function CostEstimator() {
     if (calculatingAll || calculatingModule) return;
     setCalculatingAll(true);
     try {
-      const res = await fetch('/api/estimates/calculate', {
+      const res = await fetch(`${API_BASE}/estimates/calculate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -1237,7 +1238,7 @@ export default function CostEstimator() {
     setCalculatingModule(module);
     try {
       const inputs = moduleInputs(module, form, wrapperFinalSheets);
-      const res = await fetch('/api/estimates/calculate/module', {
+      const res = await fetch(`${API_BASE}/estimates/calculate/module`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ module, inputs, estimate_id: estimateId }),
@@ -1277,7 +1278,7 @@ export default function CostEstimator() {
   const handleSaveDraft = async () => {
     setSaving(true);
     try {
-      const res = await fetch('/api/estimates', {
+      const res = await fetch(`${API_BASE}/estimates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, customer_name: customer, job_name: jobName }),
@@ -1298,7 +1299,7 @@ export default function CostEstimator() {
     setSaving(true);
     try {
       // 1. Persist (or re-persist) estimate
-      const saveRes = await fetch('/api/estimates', {
+      const saveRes = await fetch(`${API_BASE}/estimates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, customer_name: customer, job_name: jobName }),
@@ -1309,10 +1310,10 @@ export default function CostEstimator() {
       setEstimateId(eid);
 
       // 2. Finalize
-      await fetch(`/api/estimates/${eid}/finalize`, { method: 'POST' });
+      await fetch(`${API_BASE}/estimates/${eid}/finalize`, { method: 'POST' });
 
       // 3. Create quotation + PDF (best-effort)
-      await fetch('/api/quotations', {
+      await fetch(`${API_BASE}/quotations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
