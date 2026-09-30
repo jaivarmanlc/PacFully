@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, ChevronDown, Cpu, BarChart3, FileText, Package, CheckCircle2, Star } from 'lucide-react';
 import BrandLogo from '../components/BrandLogo.jsx';
+import './Home.css';
 
 function PacfullyNavLogo() {
   return <BrandLogo width={150} />;
@@ -45,18 +46,16 @@ export default function Home() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#FFFFFF', fontFamily: 'Inter, sans-serif' }}>
+    <div className="landing-page" style={{ minHeight: '100vh', background: '#FFFFFF', fontFamily: 'Inter, sans-serif' }}>
       {/* ── Nav ─────────────────────────────────────────── */}
-      <nav style={{
+      <nav className="landing-nav" style={{
         position: 'sticky', top: 0, zIndex: 50,
         background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)',
         borderBottom: '1px solid #F0F2F5',
         display: 'flex', alignItems: 'center',
-        padding: '0 48px', height: 64,
-        gap: 40,
       }}>
         <PacfullyNavLogo />
-        <div style={{ display: 'flex', gap: 32, flex: 1 }}>
+        <div className="landing-nav-links" style={{ display: 'flex', gap: 32, flex: 1 }}>
           {navItems.map(item => (
             <a
               key={item.label}
@@ -75,7 +74,7 @@ export default function Home() {
             </a>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="landing-nav-actions" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button
             onClick={() => navigate('/login')}
             style={{
@@ -100,14 +99,9 @@ export default function Home() {
       </nav>
 
       {/* ── Hero ────────────────────────────────────────── */}
-      <section style={{
+      <section className="landing-hero" style={{
         background: 'linear-gradient(135deg, #FFF9F7 0%, #FFFFFF 60%, #FFF1ED 100%)',
-        padding: '80px 48px 60px',
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: 60,
         alignItems: 'center',
-        minHeight: '88vh',
         maxWidth: 1300,
         margin: '0 auto',
       }}>
@@ -124,9 +118,8 @@ export default function Home() {
             ✦ Premium Packaging & Cost Intelligence
           </div>
 
-          <h1 style={{
-            fontFamily: 'Manrope', fontSize: 56, fontWeight: 800,
-            lineHeight: 1.1, letterSpacing: '-1.5px',
+          <h1 className="landing-hero-title" style={{
+            fontFamily: 'Manrope', fontWeight: 800,
             margin: '0 0 22px', color: '#1A1D23',
           }}>
             Packaging that{' '}
@@ -163,7 +156,7 @@ export default function Home() {
           </div>
 
           {/* Stats row */}
-          <div style={{ display: 'flex', gap: 32, marginTop: 48, paddingTop: 32, borderTop: '1px solid #F0F2F5' }}>
+          <div className="landing-stats" style={{ display: 'flex', gap: 32, marginTop: 48, paddingTop: 32, borderTop: '1px solid #F0F2F5' }}>
             {STATS.map(s => (
               <div key={s.label}>
                 <div style={{ fontFamily: 'Manrope', fontSize: 22, fontWeight: 800, color: '#1A1D23' }}>{s.value}</div>
@@ -174,7 +167,7 @@ export default function Home() {
         </div>
 
         {/* Right - Box visual */}
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+        <div className="landing-visual" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
           {/* Background circle */}
           <div style={{
             width: 420, height: 420, borderRadius: '50%',
@@ -226,9 +219,8 @@ export default function Home() {
       </section>
 
       {/* ── Features ────────────────────────────────────── */}
-      <section style={{
+      <section className="landing-features" style={{
         background: '#F7F8FA',
-        padding: '60px 48px',
         borderTop: '1px solid #F0F2F5',
       }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -237,7 +229,7 @@ export default function Home() {
               fontSize: 11, fontWeight: 700, letterSpacing: '0.1em',
               textTransform: 'uppercase', color: '#FF5A3A',
             }}>Why Pacfully</span>
-            <h2 style={{ fontFamily: 'Manrope', fontSize: 36, fontWeight: 800, margin: '10px 0 12px', color: '#1A1D23' }}>
+            <h2 className="landing-section-title" style={{ fontFamily: 'Manrope', fontWeight: 800, margin: '10px 0 12px', color: '#1A1D23' }}>
               Built for packaging professionals
             </h2>
             <p style={{ fontSize: 15, color: '#6B7280', maxWidth: 500, margin: '0 auto' }}>
@@ -245,7 +237,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+          <div className="landing-feature-grid" style={{ display: 'grid', gap: 20 }}>
             {FEATURES.map(({ num, icon: Icon, title, desc }) => (
               <div key={num} style={{
                 background: '#fff',
@@ -272,13 +264,12 @@ export default function Home() {
       </section>
 
       {/* ── CTA ─────────────────────────────────────────── */}
-      <section style={{
+      <section className="landing-cta" style={{
         background: 'linear-gradient(135deg, #FF5A3A, #FF7A5C)',
-        padding: '60px 48px',
         textAlign: 'center',
       }}>
         <div style={{ maxWidth: 600, margin: '0 auto' }}>
-          <h2 style={{ fontFamily: 'Manrope', fontSize: 36, fontWeight: 800, color: '#fff', margin: '0 0 14px' }}>
+          <h2 className="landing-section-title" style={{ fontFamily: 'Manrope', fontWeight: 800, color: '#fff', margin: '0 0 14px' }}>
             Smart Packaging.<br />Smarter Business.
           </h2>
           <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.85)', marginBottom: 32 }}>
@@ -300,8 +291,8 @@ export default function Home() {
       </section>
 
       {/* ── Footer ──────────────────────────────────────── */}
-      <footer style={{
-        background: '#1A1D23', padding: '32px 48px',
+      <footer className="landing-footer" style={{
+        background: '#1A1D23',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div>
