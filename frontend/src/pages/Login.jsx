@@ -8,12 +8,6 @@ function PacfullyLogo({ size = 'md' }) {
   return <BrandLogo width={size === 'lg' ? 180 : 142} />;
 }
 
-const DEMO_ACCOUNTS = [
-  { label: 'Admin',        email: 'admin@pacfully.in',  password: 'admin123',  role: 'Administrator' },
-  { label: 'Jaya Varma',   email: 'jaya@pacfully.in',   password: 'jaya123',   role: 'Administrator' },
-  { label: 'Arjun Kapoor', email: 'arjun@pacfully.in',  password: 'arjun123',  role: 'Estimator'     },
-  { label: 'Priya Menon',  email: 'priya@pacfully.in',  password: 'priya123',  role: 'Viewer'        },
-];
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 export default function Login() {
@@ -103,12 +97,6 @@ export default function Login() {
     }
   };
 
-  const fillDemo = (acct) => {
-    setEmail(acct.email);
-    setPassword(acct.password);
-    setError('');
-  };
-
   // Don't render the form while redirecting
   if (isLoggedIn) return null;
 
@@ -134,34 +122,6 @@ export default function Login() {
           <p style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', margin: '0 0 28px' }}>
             Sign in to your Cost Intelligence Platform
           </p>
-
-          {/* Quick-fill chips */}
-          <div style={{ marginBottom: 20 }}>
-            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#9CA3AF', marginBottom: 8 }}>
-              Quick sign-in
-            </p>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {DEMO_ACCOUNTS.map(acct => (
-                <button
-                  key={acct.email}
-                  type="button"
-                  onClick={() => fillDemo(acct)}
-                  style={{
-                    padding: '5px 11px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                    cursor: 'pointer', border: '1px solid var(--line)',
-                    background: email === acct.email ? '#FFF1ED' : '#fff',
-                    color:      email === acct.email ? '#FF5A3A'  : '#6B7280',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {acct.label}
-                  <span style={{ marginLeft: 5, fontSize: 9, opacity: 0.7 }}>
-                    {acct.role === 'Administrator' ? '🔑' : acct.role === 'Estimator' ? '📐' : '👁'}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Form */}
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -365,17 +325,13 @@ export default function Login() {
           ))}
         </div>
 
-        {/* Default accounts legend */}
         <div style={{ marginTop: 32, width: '100%', maxWidth: 280 }}>
           <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>
-            Default accounts
+            Need an account?
           </p>
-          {DEMO_ACCOUNTS.map(a => (
-            <div key={a.email} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.8)', marginBottom: 5 }}>
-              <span style={{ fontWeight: 600 }}>{a.email}</span>
-              <span style={{ opacity: 0.7 }}>{a.password}</span>
-            </div>
-          ))}
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', margin: 0 }}>
+            Ask your Pacfully administrator to create your sign-in.
+          </p>
         </div>
       </div>
 
