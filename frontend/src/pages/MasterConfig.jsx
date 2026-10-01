@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Save, AlertCircle, RotateCcw } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Save, AlertCircle, RotateCcw } from 'lucide-react';
 import { getMasterConfig, saveMasterConfig } from '../services/api';
 
 const MATERIAL_RATES = [
@@ -41,7 +41,7 @@ const MAKE_READY_RATES = [
 ];
 
 function tabForQuery(value = '') {
-  const query = value.toLowerCase();
+  const query = (value || '').toLowerCase();
   if (/punch|foam|duplex/.test(query)) return 'Punching';
   if (/make.?ready/.test(query)) return 'Make-ready Defaults';
   if (/print|lamin|embellish/.test(query)) return 'Process Rates';
@@ -71,6 +71,7 @@ function RateTable({ rows, onChange, searchTerm }) {
 }
 
 export default function MasterConfig() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => tabForQuery(searchParams.get('q')));
   const [search, setSearch] = useState(() => searchParams.get('q') || '');
@@ -126,6 +127,12 @@ export default function MasterConfig() {
           <p>Default rates resolve first — overridable at estimate level</p>
         </div>
         <div className="page-header-right">
+          <button className="btn btn-secondary" onClick={() => {
+            if (window.history.state?.idx > 0) navigate(-1);
+            else navigate('/dashboard');
+          }}>
+            <ArrowLeft size={14} /> Back
+          </button>
           <button className="btn btn-primary" onClick={saveChanges} disabled={saving}>
             <Save size={14} /> {saving ? 'Saving...' : 'Save Changes'}
           </button>
