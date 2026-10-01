@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search, MapPin, ChevronRight, RefreshCw, AlertCircle, CheckCircle2, X, Trash2 } from 'lucide-react';
 import { listCustomers, createCustomer, deleteCustomer } from '../services/api';
 
@@ -77,10 +77,11 @@ function AddModal({ onClose, onSaved }) {
 
 export default function Customers() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [rows,    setRows]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
-  const [search,  setSearch]  = useState('');
+  const [search,  setSearch]  = useState(() => searchParams.get('q') || '');
   const [showAdd, setShowAdd] = useState(false);
   const [toast,   setToast]   = useState(null);
 
@@ -104,6 +105,7 @@ export default function Customers() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setSearch(searchParams.get('q') || ''); }, [searchParams]);
 
   const handleDelete = async (e, row) => {
     e.stopPropagation();

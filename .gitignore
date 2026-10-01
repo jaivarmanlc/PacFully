@@ -18,6 +18,7 @@ frontend/dist/
 *.db
 *.sqlite
 *.sqlite3
+/data/.development-secret
 
 # Generated files
 uploads/*

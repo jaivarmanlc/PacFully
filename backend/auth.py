@@ -10,7 +10,8 @@ Authentication module for Pacfully.
 import os
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional
+from pathlib import Path
+from typing import Literal, Optional
 
 import bcrypt as _bcrypt
 from google.auth.transport import requests as google_requests
@@ -19,7 +20,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -28,7 +29,20 @@ from models import User
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 # ── Config ────────────────────────────────────────────────────
-SECRET_KEY     = os.getenv("SECRET_KEY", "pacfully-super-secret-key-change-in-prod-2026")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    if ENVIRONMENT == "production":
+        raise RuntimeError("SECRET_KEY must be configured in production.")
+    secret_path = Path(__file__).resolve().parent.parent / "data" / ".development-secret"
+    secret_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        secret_path.touch(exist_ok=False)
+        SECRET_KEY = secrets.token_urlsafe(32)
+        secret_path.write_text(SECRET_KEY, encoding="utf-8")
+    except FileExistsError:
+        SECRET_KEY = secret_path.read_text(encoding="utf-8").strip()
+
 ALGORITHM      = "HS256"
 TOKEN_EXPIRE_H = 24
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -88,27 +102,33 @@ def require_admin(current: User = Depends(get_current_user)) -> User:
     return current
 
 
-# ── Default users seeded on first startup ─────────────────────
+# ── Initial administrator bootstrap ──────────────────────────
 
-DEFAULT_USERS = [
-    {"full_name": "Admin",        "email": "admin@pacfully.in",  "password": "admin123",  "role": "Administrator"},
-    {"full_name": "Jaya Varma",   "email": "jaya@pacfully.in",   "password": "jaya123",   "role": "Administrator"},
-    {"full_name": "Arjun Kapoor", "email": "arjun@pacfully.in",  "password": "arjun123",  "role": "Estimator"    },
-    {"full_name": "Priya Menon",  "email": "priya@pacfully.in",  "password": "priya123",  "role": "Viewer"       },
-]
+INITIAL_ADMIN_EMAIL = os.getenv("INITIAL_ADMIN_EMAIL", "").strip().lower()
+INITIAL_ADMIN_PASSWORD = os.getenv("INITIAL_ADMIN_PASSWORD", "")
+INITIAL_ADMIN_NAME = os.getenv("INITIAL_ADMIN_NAME", "Pacfully Administrator").strip()
 
 def seed_users(db: Session):
-    """Insert default users if the users table is empty."""
-    if db.query(User).count() == 0:
-        for u in DEFAULT_USERS:
-            db.add(User(
-                full_name       = u["full_name"],
-                email           = u["email"],
-                hashed_password = hash_password(u["password"]),
-                role            = u["role"],
-                is_active       = True,
-            ))
-        db.commit()
+    """Create the configured administrator only when the users table is empty."""
+    if db.query(User).first():
+        return
+    if not INITIAL_ADMIN_EMAIL or not INITIAL_ADMIN_PASSWORD:
+        if ENVIRONMENT == "production":
+            raise RuntimeError(
+                "Set INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD before first production startup."
+            )
+        return
+    if len(INITIAL_ADMIN_PASSWORD) < 12:
+        raise RuntimeError("INITIAL_ADMIN_PASSWORD must be at least 12 characters.")
+
+    db.add(User(
+        full_name=INITIAL_ADMIN_NAME or "Pacfully Administrator",
+        email=INITIAL_ADMIN_EMAIL,
+        hashed_password=hash_password(INITIAL_ADMIN_PASSWORD),
+        role="Administrator",
+        is_active=True,
+    ))
+    db.commit()
 
 
 # ── Pydantic schemas ──────────────────────────────────────────
@@ -136,8 +156,11 @@ class UserOut(BaseModel):
 class UserCreate(BaseModel):
     full_name: str
     email:     str
-    password:  str
-    role:      str = "Estimator"
+    password:  str = Field(min_length=12, max_length=72)
+    role:      Literal["Administrator", "Estimator", "Viewer"] = "Estimator"
+
+class UserRoleUpdate(BaseModel):
+    role: Literal["Administrator", "Estimator", "Viewer"]
 
 class PasswordChange(BaseModel):
     current_password: str
@@ -283,6 +306,24 @@ def delete_user(
     u.is_active = False
     db.commit()
     return {"message": f"{u.full_name} deactivated"}
+
+
+@router.put("/users/{user_id}", response_model=UserOut)
+def update_user_role(
+    user_id: int,
+    body: UserRoleUpdate,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if user_id == current.id:
+        raise HTTPException(400, "Cannot change your own role")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    user.role = body.role
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.post("/change-password")

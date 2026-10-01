@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Calculator, ClipboardList, Users, BarChart3,
-  Settings2, FileText, Receipt, ChevronDown, HelpCircle,
+  Settings2, FileText, Receipt, HelpCircle,
   Shield, BookOpen, LogOut,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -26,7 +26,7 @@ const NAV_ADMIN = [
   { label: 'Audit Log',   icon: BookOpen,  to: '/audit-log' },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ open = false, onClose }) {
   const location                   = useLocation();
   const navigate                   = useNavigate();
   const { user, initials, logout } = useAuth();
@@ -42,7 +42,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${open ? ' open' : ''}`}>
       {/* Brand */}
       <div className="sidebar-brand">
         <BrandLogo width={142} />
@@ -55,7 +55,6 @@ export default function Sidebar() {
             <span className="sidebar-workspace-label">Workspace</span>
             <span className="sidebar-workspace-name">Cost Intelligence</span>
           </div>
-          <ChevronDown size={14} style={{ color: 'var(--muted-2)' }} />
         </div>
       </div>
 
@@ -66,6 +65,7 @@ export default function Sidebar() {
             key={to}
             to={to}
             className={() => `nav-item ${isActive(to) ? 'active' : ''}`}
+            onClick={onClose}
           >
             <Icon size={16} className="nav-icon" />
             <span>{label}</span>
@@ -79,6 +79,7 @@ export default function Sidebar() {
             key={to}
             to={to}
             className={() => `nav-item ${isActive(to) ? 'active' : ''}`}
+            onClick={onClose}
           >
             <Icon size={16} className="nav-icon" />
             <span>{label}</span>

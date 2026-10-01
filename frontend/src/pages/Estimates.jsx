@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search, Eye, Trash2, FileText, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { StatusPill } from '../components/CostCard';
 import { listEstimates, deleteEstimate, finalizeEstimate } from '../services/api';
@@ -13,10 +13,11 @@ const DEMO = [
 
 export default function Estimates() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [rows,          setRows]          = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [offline,       setOffline]       = useState(false);
-  const [search,        setSearch]        = useState('');
+  const [search,        setSearch]        = useState(() => searchParams.get('q') || '');
   const [statusFilter,  setStatusFilter]  = useState('All Status');
   const [customerFilter,setCustomerFilter]= useState('All Customers');
   const [toast,         setToast]         = useState(null);
@@ -41,6 +42,7 @@ export default function Estimates() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setSearch(searchParams.get('q') || ''); }, [searchParams]);
 
   const handleDelete = async (e, row) => {
     e.stopPropagation();

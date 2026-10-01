@@ -4,9 +4,12 @@ Covers: health, costing engine (stateless), customers CRUD,
 estimates CRUD + finalize, quotations + PDF generation, audit log.
 """
 
+import json
 import os
-from datetime import datetime
-from math import ceil
+import tempfile
+import uuid
+from datetime import date, datetime
+from math import ceil, isfinite
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -15,7 +18,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import AuditEvent, CostLine, Customer, Estimate, Quotation
+from models import AuditEvent, CostLine, Customer, Estimate, MasterConfiguration, Quotation, SystemSettings
 from quotation.pdf_generator import generate_quotation_pdf, generate_proforma_pdf
 
 router = APIRouter()
@@ -33,6 +36,51 @@ PUNCHING_RATES = {
     "FBB":         {"speed": 600.0, "setup_hours": 0.5},
     "Duplex":      {"speed": 600.0, "setup_hours": 0.5},
     "Foam/EVA/EPE":{"speed": 500.0, "setup_hours": 0.5},
+}
+MASTER_RATE_DEFAULTS = {
+    "kappa_rate_per_kg": 80.0,
+    "wrapper_rate_per_kg": 95.0,
+    "fbb_rate_per_kg": 88.0,
+    "duplex_board_rate_per_kg": 72.0,
+    "glue_rate_per_kg": 90.0,
+    "print_15x20_first": 1500.0,
+    "print_15x20_additional": 0.40,
+    "print_20x28_first": 3500.0,
+    "print_20x28_additional": 0.50,
+    "print_28x40_first": 6500.0,
+    "print_28x40_additional": 0.80,
+    "lamination_thermal": 1.10,
+    "lamination_cold": 0.70,
+    "lamination_dry": 0.80,
+    "punching_machine_rate_per_hour": 400.0,
+    "punching_speed_kappa": 400.0,
+    "punching_speed_wrapper": 600.0,
+    "punching_speed_fbb": 600.0,
+    "punching_speed_duplex": 600.0,
+    "punching_speed_foam": 500.0,
+    "punching_setup_hours": 0.5,
+    "wrapper_make_ready_sheets": 150.0,
+    "embellishment_rate_per_sq_in": 2.5,
+    "embellishment_setup": 800.0,
+    "embellishment_minimum": 1000.0,
+    "conversion_machine_rate": 0.0,
+    "conversion_labour_rate": 0.0,
+    "conversion_setup": 0.0,
+}
+SYSTEM_SETTING_DEFAULTS = {
+    "company_name": "Pacfully Packaging Pvt Ltd",
+    "gst_number": "33AABCP1234F1Z5",
+    "email": "accounts@pacfully.in",
+    "phone": "+91 44 1234 5678",
+    "address": "120 Business Park, Chennai - 600001, Tamil Nadu, India",
+    "bank_details": "Bank: HDFC Bank | A/C: 50100123456789 | IFSC: HDFC0001234 | Branch: Chennai Main",
+    "gst_rate": 18.0,
+    "hsn_code": "4819",
+    "tax_regime": "GST (India)",
+    "estimate_prefix": "EST-",
+    "quotation_prefix": "QUO-",
+    "proforma_prefix": "PI-",
+    "next_estimate_number": 125,
 }
 
 # ── Pydantic schemas ──────────────────────────────────────────
@@ -75,6 +123,8 @@ class EstimateInput(BaseModel):
     wrapper_master_rate:       float | None = Field(default=None, ge=0)
     wrapper_override_rate:     float | None = Field(default=None, ge=0)
     print_sheet_size:          str   = "28x40"
+    print_master_rate:         float | None = Field(default=None, ge=0)
+    print_additional_rate:     float | None = Field(default=None, ge=0)
     print_override_rate:       float | None = Field(default=None, ge=0)
     lamination_type:           str   = "thermal"
     lamination_sheet_length_in:float = Field(default=28, gt=0)
@@ -87,6 +137,8 @@ class EstimateInput(BaseModel):
     ])
     punching_material:              str   = "Kappa"
     punching_machine_rate_per_hour: float = Field(default=400, ge=0)
+    punching_speed:                float | None = Field(default=None, gt=0)
+    punching_setup_hours:          float | None = Field(default=None, ge=0)
     embellishment_area_sq_in:       float = Field(default=24, ge=0)
     embellishment_rate_per_sq_in:   float = Field(default=2.5, ge=0)
     embellishment_setup:            float = Field(default=800, ge=0)
@@ -131,6 +183,8 @@ class PrintingModuleInput(BaseModel):
     quantity: int = Field(gt=0)
     wrapper_final_sheets: int = Field(gt=0)
     print_sheet_size: str = "28x40"
+    print_master_rate: float | None = Field(default=None, ge=0)
+    print_additional_rate: float | None = Field(default=None, ge=0)
     print_override_rate: float | None = Field(default=None, ge=0)
 
 class LaminationModuleInput(BaseModel):
@@ -139,6 +193,7 @@ class LaminationModuleInput(BaseModel):
     lamination_type: str = "thermal"
     lamination_sheet_length_in: float = Field(gt=0)
     lamination_sheet_width_in: float = Field(gt=0)
+    lam_master_rate: float | None = Field(default=None, ge=0)
     lam_override_rate: float | None = Field(default=None, ge=0)
 
 class GlueModuleInput(BaseModel):
@@ -149,6 +204,8 @@ class PunchingModuleInput(BaseModel):
     quantity: int = Field(gt=0)
     punching_material: str = "Kappa"
     punching_machine_rate_per_hour: float = Field(ge=0)
+    punching_speed: float | None = Field(default=None, gt=0)
+    punching_setup_hours: float | None = Field(default=None, ge=0)
     wrapper_final_sheets: int | None = Field(default=None, gt=0)
 
 class EmbellishmentsModuleInput(BaseModel):
@@ -167,6 +224,24 @@ class ModuleCalculationRequest(BaseModel):
     inputs: dict[str, object]
     estimate_id: int | None = Field(default=None, gt=0)
 
+class MasterRatesUpdate(BaseModel):
+    rates: dict[str, float]
+
+class SystemSettingsUpdate(BaseModel):
+    company_name: str = Field(min_length=1, max_length=200)
+    gst_number: str = Field(default="", max_length=50)
+    email: str = Field(default="", max_length=200)
+    phone: str = Field(default="", max_length=50)
+    address: str = Field(default="", max_length=2000)
+    bank_details: str = Field(default="", max_length=2000)
+    gst_rate: float = Field(default=18, ge=0, le=100)
+    hsn_code: str = Field(default="4819", max_length=30)
+    tax_regime: str = Field(default="GST (India)", max_length=30)
+    estimate_prefix: str = Field(default="EST-", max_length=20)
+    quotation_prefix: str = Field(default="QUO-", max_length=20)
+    proforma_prefix: str = Field(default="PI-", max_length=20)
+    next_estimate_number: int = Field(default=125, gt=0)
+
 class CustomerCreate(BaseModel):
     name:       str
     contact:    str = ""
@@ -178,11 +253,17 @@ class CustomerCreate(BaseModel):
     gst_number: str = ""
 
 class QuotationCreate(BaseModel):
-    estimate_id:      int
+    estimate_id:      int | None = Field(default=None, gt=0)
     doc_type:         str   = "Quotation"   # "Quotation" | "Proforma Invoice"
+    quotation_number: str | None = Field(default=None, max_length=60, pattern=r"^[A-Za-z0-9._/-]+$")
+    document_date:    date | None = None
+    customer_name:    str | None = Field(default=None, max_length=200)
     customer_address: str   = ""
-    gst_percent:      float = 18.0
-    validity_days:    int   = 15
+    job_name:         str | None = Field(default=None, max_length=300)
+    order_quantity:   int | None = Field(default=None, gt=0)
+    unit_price:       float | None = Field(default=None, ge=0)
+    gst_percent:      float = Field(default=18.0, ge=0, lt=100)
+    validity_days:    int   = Field(default=15, ge=0)
     notes:            str   = "1. Prices are valid for 15 days.\n2. This is a budgetary quotation.\n3. Final pricing may vary based on final artwork and specifications."
 
 # ── helpers ───────────────────────────────────────────────────
@@ -256,16 +337,21 @@ def _calculate_wrapper(p):
 
 def _calculate_printing(p, wrapper_final):
     pr             = PRINT_RATES.get(p.print_sheet_size, PRINT_RATES["28x40"])
-    first_rate     = p.print_override_rate if p.print_override_rate is not None else pr["first"]
-    printing_total = first_rate if wrapper_final <= 1000 else first_rate + (wrapper_final - 1000) * pr["additional"]
+    master_first   = getattr(p, "print_master_rate", None)
+    first_rate     = p.print_override_rate if p.print_override_rate is not None else (master_first if master_first is not None else pr["first"])
+    additional_rate = getattr(p, "print_additional_rate", None)
+    if additional_rate is None:
+        additional_rate = pr["additional"]
+    printing_total = first_rate if wrapper_final <= 1000 else first_rate + (wrapper_final - 1000) * additional_rate
     return _costing_line("Printing", printing_total, p.quantity, [
         ("Input",            f"{wrapper_final} final wrapper sheets"),
         ("Sheet tier",       p.print_sheet_size),
-        ("Additional rate",  pr["additional"]),
+        ("First-tier rate",  first_rate), ("Additional rate", additional_rate),
     ])
 
 def _calculate_lamination(p, wrapper_final):
-    master_rate    = LAMINATION_RATES.get(p.lamination_type, 1.10)
+    configured_rate = getattr(p, "lam_master_rate", None)
+    master_rate    = configured_rate if configured_rate is not None else LAMINATION_RATES.get(p.lamination_type, 1.10)
     lam_rate       = p.lam_override_rate if p.lam_override_rate is not None else master_rate
     lam_per_sheet  = p.lamination_sheet_length_in * p.lamination_sheet_width_in * lam_rate / 100
     lamination_total = lam_per_sheet * wrapper_final
@@ -287,7 +373,13 @@ def _calculate_glue(p):
     ])
 
 def _calculate_punching(p, wrapper_final):
-    punch          = PUNCHING_RATES.get(p.punching_material, PUNCHING_RATES["Kappa"])
+    punch          = dict(PUNCHING_RATES.get(p.punching_material, PUNCHING_RATES["Kappa"]))
+    configured_speed = getattr(p, "punching_speed", None)
+    configured_setup = getattr(p, "punching_setup_hours", None)
+    if configured_speed is not None:
+        punch["speed"] = configured_speed
+    if configured_setup is not None:
+        punch["setup_hours"] = configured_setup
     punch_quantity = wrapper_final if p.punching_material == "Wrapper" else p.quantity
     prod_hrs       = punch_quantity / punch["speed"]
     punching_total = (prod_hrs + punch["setup_hours"]) * p.punching_machine_rate_per_hour
@@ -373,6 +465,55 @@ def _run_calculation(p: EstimateInput) -> dict:
 @router.get("/health")
 def health():
     return {"status": "ok", "service": "pacfully-cost-intelligence"}
+
+@router.get("/settings")
+def get_system_settings(db: Session = Depends(get_db)):
+    record = db.query(SystemSettings).filter(SystemSettings.id == 1).first()
+    return {"settings": {**SYSTEM_SETTING_DEFAULTS, **(record.settings if record else {})}}
+
+@router.put("/settings")
+def update_system_settings(body: SystemSettingsUpdate, db: Session = Depends(get_db)):
+    record = db.query(SystemSettings).filter(SystemSettings.id == 1).first()
+    previous = {**SYSTEM_SETTING_DEFAULTS, **(record.settings if record else {})}
+    settings = body.model_dump()
+    if record is None:
+        record = SystemSettings(id=1, settings=settings)
+        db.add(record)
+    else:
+        record.settings = settings
+    _audit(
+        db, "System Settings Updated", "config", "system-settings",
+        detail="Company, tax, and document numbering settings updated",
+        old_val=json.dumps(previous), new_val=json.dumps(settings), user="Admin",
+    )
+    db.commit()
+    return {"settings": settings, "message": "Settings saved"}
+
+@router.get("/master-config")
+def get_master_config(db: Session = Depends(get_db)):
+    config = db.query(MasterConfiguration).filter(MasterConfiguration.id == 1).first()
+    rates = {**MASTER_RATE_DEFAULTS, **(config.rates if config else {})}
+    return {"rates": rates}
+
+@router.put("/master-config")
+def update_master_config(body: MasterRatesUpdate, db: Session = Depends(get_db)):
+    unknown = set(body.rates) - set(MASTER_RATE_DEFAULTS)
+    if unknown:
+        raise HTTPException(422, f"Unknown master rates: {', '.join(sorted(unknown))}")
+    if any(not isfinite(value) or value < 0 for value in body.rates.values()):
+        raise HTTPException(422, "Master rates must be finite non-negative numbers")
+
+    config = db.query(MasterConfiguration).filter(MasterConfiguration.id == 1).first()
+    if config is None:
+        config = MasterConfiguration(id=1, rates=dict(MASTER_RATE_DEFAULTS))
+        db.add(config)
+    previous = {**MASTER_RATE_DEFAULTS, **(config.rates or {})}
+    rates = {**previous, **body.rates}
+    config.rates = rates
+    _audit(db, "Master Configuration Updated", "config", "master-rates",
+            detail="Master rates updated", old_val=json.dumps(previous), new_val=json.dumps(rates), user="Admin")
+    db.commit()
+    return {"rates": rates, "message": "Master rates saved"}
 
 # ═══════════════════════════════════════════════════════════════
 # Costing engine — stateless calculate (no DB)
@@ -714,6 +855,10 @@ def list_quotations(db: Session = Depends(get_db)):
         for q in rows
     ]
 
+@router.get("/quotations/next-number")
+def get_next_quotation_number(doc_type: str = "Quotation", db: Session = Depends(get_db)):
+    return {"quotation_number": _next_quotation_number(db, doc_type)}
+
 @router.get("/quotations/{quotation_id}")
 def get_quotation(quotation_id: int, db: Session = Depends(get_db)):
     q = db.query(Quotation).filter(Quotation.id == quotation_id).first()
@@ -734,12 +879,22 @@ def get_quotation(quotation_id: int, db: Session = Depends(get_db)):
 @router.post("/quotations", status_code=201)
 def create_quotation(body: QuotationCreate, db: Session = Depends(get_db)):
     """Generate a quotation/proforma from a saved estimate and produce a PDF."""
+    if body.estimate_id is None:
+        raise HTTPException(422, "Estimate ID is required to save a document")
     est = db.query(Estimate).filter(Estimate.id == body.estimate_id).first()
     if not est:
         raise HTTPException(404, "Estimate not found")
 
-    q_num    = _next_quotation_number(db, body.doc_type)
-    subtotal = round(est.selling_price_per_box * est.order_quantity, 2)
+    q_num = (body.quotation_number or "").strip() or _next_quotation_number(db, body.doc_type)
+    if db.query(Quotation).filter(Quotation.quotation_number == q_num).first():
+        raise HTTPException(409, "Document number already exists")
+
+    customer_name = body.customer_name if body.customer_name is not None else est.customer_name
+    job_name = body.job_name if body.job_name is not None else est.job_name
+    quantity = body.order_quantity if body.order_quantity is not None else est.order_quantity
+    unit_price = body.unit_price if body.unit_price is not None else est.selling_price_per_box
+    document_date = datetime.combine(body.document_date, datetime.min.time()) if body.document_date else datetime.utcnow()
+    subtotal = round(unit_price * quantity, 2)
     gst_amt  = round(subtotal * body.gst_percent / 100, 2)
     grand    = round(subtotal + gst_amt, 2)
 
@@ -747,17 +902,18 @@ def create_quotation(body: QuotationCreate, db: Session = Depends(get_db)):
         quotation_number = q_num,
         estimate_id      = est.id,
         doc_type         = body.doc_type,
-        customer_name    = est.customer_name,
+        customer_name    = customer_name,
         customer_address = body.customer_address,
-        job_name         = est.job_name,
-        order_quantity   = est.order_quantity,
-        unit_price       = est.selling_price_per_box,
+        job_name         = job_name,
+        order_quantity   = quantity,
+        unit_price       = unit_price,
         subtotal         = subtotal,
         gst_percent      = body.gst_percent,
         gst_amount       = gst_amt,
         grand_total      = grand,
         validity_days    = body.validity_days,
         notes            = body.notes,
+        created_at       = document_date,
         status           = "Draft",
     )
     db.add(q)
@@ -766,11 +922,12 @@ def create_quotation(body: QuotationCreate, db: Session = Depends(get_db)):
     # Generate PDF
     pdf_data = {
         "quotation_number": q_num, "doc_type": body.doc_type,
-        "customer_name": est.customer_name, "customer_address": body.customer_address,
-        "job_name": est.job_name, "order_quantity": est.order_quantity,
-        "unit_price": est.selling_price_per_box, "subtotal": subtotal,
+        "customer_name": customer_name, "customer_address": body.customer_address,
+        "job_name": job_name, "order_quantity": quantity,
+        "unit_price": unit_price, "subtotal": subtotal,
         "gst_percent": body.gst_percent, "gst_amount": gst_amt, "grand_total": grand,
         "validity_days": body.validity_days, "notes": body.notes,
+        "document_date": body.document_date.isoformat() if body.document_date else None,
     }
     try:
         if "Proforma" in body.doc_type:
@@ -786,7 +943,7 @@ def create_quotation(body: QuotationCreate, db: Session = Depends(get_db)):
         est.status = "Quoted"
 
     _audit(db, f"{body.doc_type} Generated", "quotation", q_num,
-           detail=f"{est.customer_name} — Grand Total ₹{grand:,.2f}",
+           detail=f"{customer_name} — Grand Total ₹{grand:,.2f}",
            estimate_id=est.id, user="Admin")
     db.commit()
     db.refresh(q)
@@ -797,6 +954,121 @@ def create_quotation(body: QuotationCreate, db: Session = Depends(get_db)):
         "grand_total":      q.grand_total,
         "has_pdf":          bool(q.pdf_path and Path(q.pdf_path).exists()),
         "message":          f"{body.doc_type} created successfully",
+    }
+
+@router.post("/quotations/preview")
+def preview_quotation(body: QuotationCreate):
+    """Generate a temporary PDF from the current editable document values."""
+    q_num = (body.quotation_number or "").strip() or f"PREVIEW-{uuid.uuid4().hex[:8].upper()}"
+    quantity = body.order_quantity or 0
+    unit_price = body.unit_price or 0
+    subtotal = round(quantity * unit_price, 2)
+    gst_amount = round(subtotal * body.gst_percent / 100, 2)
+    data = {
+        "quotation_number": q_num,
+        "doc_type": body.doc_type,
+        "document_date": body.document_date.isoformat() if body.document_date else None,
+        "customer_name": body.customer_name or "",
+        "customer_address": body.customer_address,
+        "job_name": body.job_name or "Packaging",
+        "order_quantity": quantity,
+        "unit_price": unit_price,
+        "subtotal": subtotal,
+        "gst_percent": body.gst_percent,
+        "gst_amount": gst_amount,
+        "grand_total": round(subtotal + gst_amount, 2),
+        "validity_days": body.validity_days,
+        "notes": body.notes,
+    }
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temporary_pdf:
+        path = Path(temporary_pdf.name)
+    try:
+        if "Proforma" in body.doc_type:
+            generate_proforma_pdf(data, output_path=path)
+        else:
+            generate_quotation_pdf(data, output_path=path)
+        content = path.read_bytes()
+    finally:
+        path.unlink(missing_ok=True)
+    filename = f"{q_num.replace('/', '-')}.pdf"
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+@router.put("/quotations/{quotation_id}")
+def update_quotation(quotation_id: int, body: QuotationCreate, db: Session = Depends(get_db)):
+    q = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    if not q:
+        raise HTTPException(404, "Quotation not found")
+
+    q_num = (body.quotation_number or q.quotation_number).strip()
+    duplicate = db.query(Quotation).filter(
+        Quotation.quotation_number == q_num,
+        Quotation.id != q.id,
+    ).first()
+    if duplicate:
+        raise HTTPException(409, "Document number already exists")
+
+    customer_name = body.customer_name if body.customer_name is not None else q.customer_name
+    customer_address = body.customer_address
+    job_name = body.job_name if body.job_name is not None else q.job_name
+    quantity = body.order_quantity if body.order_quantity is not None else q.order_quantity
+    unit_price = body.unit_price if body.unit_price is not None else q.unit_price
+    document_date = body.document_date or (q.created_at.date() if q.created_at else date.today())
+    subtotal = round(unit_price * quantity, 2)
+    gst_amount = round(subtotal * body.gst_percent / 100, 2)
+    grand_total = round(subtotal + gst_amount, 2)
+    doc_type = body.doc_type or q.doc_type
+    pdf_data = {
+        "quotation_number": q_num, "doc_type": doc_type,
+        "customer_name": customer_name, "customer_address": customer_address,
+        "job_name": job_name, "order_quantity": quantity,
+        "unit_price": unit_price, "subtotal": subtotal,
+        "gst_percent": body.gst_percent, "gst_amount": gst_amount,
+        "grand_total": grand_total, "validity_days": body.validity_days,
+        "notes": body.notes, "document_date": document_date.isoformat(),
+    }
+    try:
+        if "Proforma" in doc_type:
+            pdf_path = generate_proforma_pdf(pdf_data)
+        else:
+            pdf_path = generate_quotation_pdf(pdf_data)
+    except Exception as exc:
+        raise HTTPException(500, f"PDF generation failed: {exc}") from exc
+
+    old_pdf_path = q.pdf_path
+    q.quotation_number = q_num
+    q.doc_type = doc_type
+    q.customer_name = customer_name
+    q.customer_address = customer_address
+    q.job_name = job_name
+    q.order_quantity = quantity
+    q.unit_price = unit_price
+    q.subtotal = subtotal
+    q.gst_percent = body.gst_percent
+    q.gst_amount = gst_amount
+    q.grand_total = grand_total
+    q.validity_days = body.validity_days
+    q.notes = body.notes
+    q.created_at = datetime.combine(document_date, datetime.min.time())
+    q.pdf_path = pdf_path
+
+    _audit(db, f"{doc_type} Updated", "quotation", q_num,
+           detail=f"{customer_name} — Grand Total ₹{grand_total:,.2f}",
+           estimate_id=q.estimate_id, user="Admin")
+    db.commit()
+    db.refresh(q)
+    if old_pdf_path and old_pdf_path != pdf_path:
+        Path(old_pdf_path).unlink(missing_ok=True)
+
+    return {
+        "id": q.id,
+        "quotation_number": q.quotation_number,
+        "grand_total": q.grand_total,
+        "has_pdf": bool(q.pdf_path and Path(q.pdf_path).exists()),
+        "message": f"{doc_type} updated successfully",
     }
 
 @router.get("/quotations/{quotation_id}/pdf")
@@ -814,7 +1086,7 @@ def download_pdf(quotation_id: int, db: Session = Depends(get_db)):
             "unit_price": q.unit_price, "subtotal": q.subtotal,
             "gst_percent": q.gst_percent, "gst_amount": q.gst_amount,
             "grand_total": q.grand_total, "validity_days": q.validity_days,
-            "notes": q.notes or "",
+            "notes": q.notes or "", "document_date": q.created_at.date().isoformat() if q.created_at else None,
         }
         try:
             if "Proforma" in q.doc_type:

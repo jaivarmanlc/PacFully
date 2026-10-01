@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, Download, RefreshCw, AlertCircle } from 'lucide-react';
 import { getAuditLog } from '../services/api';
+import { downloadCsv } from '../services/downloadCsv.js';
 
 const DEMO = [
   { id: 1, user: 'Jaya Varma',   action: 'Estimate Finalized',    entity_type: 'estimate',   entity_id: 'EST-00001', detail: 'Premium Rigid Box — Luxe Beauty Pvt Ltd', timestamp: '25 Sep 2026, 14:32' },
@@ -59,7 +60,13 @@ export default function AuditLog() {
         </div>
         <div className="page-header-right">
           <button className="btn btn-secondary" onClick={load}><RefreshCw size={14} /></button>
-          <button className="btn btn-secondary"><Download size={14} /> Export</button>
+          <button className="btn btn-secondary" onClick={() => downloadCsv(
+            'pacfully-audit-log.csv',
+            ['User', 'Action', 'Entity Type', 'Entity ID', 'Detail', 'Timestamp'],
+            filtered.map(row => [row.user, row.action, row.entity_type, row.entity_id, row.detail, row.timestamp]),
+          )} disabled={loading || !filtered.length}>
+            <Download size={14} /> Export
+          </button>
         </div>
       </div>
 

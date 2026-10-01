@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Bell, ChevronDown } from 'lucide-react';
+import { Search, Bell, ChevronDown, Menu } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const ROUTE_LABELS = {
@@ -24,7 +24,7 @@ function getBreadcrumb(pathname) {
   return ['Pacfully'];
 }
 
-export default function Navbar() {
+export default function Navbar({ onMenuClick }) {
   const location            = useLocation();
   const navigate            = useNavigate();
   const { user, initials, logout } = useAuth();
@@ -35,7 +35,8 @@ export default function Navbar() {
 
   const handleSearch = (event) => {
     event.preventDefault();
-    const query = search.trim().toLowerCase();
+    const term = search.trim();
+    const query = term.toLowerCase();
     if (!query) return;
     const destination = query.includes('customer') || query.includes('client')
       ? '/customers'
@@ -43,8 +44,10 @@ export default function Navbar() {
         ? '/quotations'
         : query.includes('report')
           ? '/reports'
+          : ['material', 'board', 'rate', 'process', 'punch', 'kappa', 'wrapper', 'glue', 'lamination', 'printing', 'embellishment'].some(term => query.includes(term))
+            ? '/master-config'
           : '/estimates';
-    navigate(destination);
+    navigate({ pathname: destination, search: `?q=${encodeURIComponent(term)}` });
   };
 
   const handleLogout = () => {
@@ -54,6 +57,14 @@ export default function Navbar() {
 
   return (
     <header className="topbar">
+      <button
+        className="topbar-menu-btn"
+        type="button"
+        aria-label="Open navigation menu"
+        onClick={onMenuClick}
+      >
+        <Menu size={19} />
+      </button>
       {/* Breadcrumb */}
       <div className="topbar-breadcrumb">
         <span>Cost Intelligence</span>

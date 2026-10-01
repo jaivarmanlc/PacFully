@@ -10,7 +10,7 @@ function getToken() {
   return localStorage.getItem('pac_token') || '';
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, responseType = 'json') {
   const headers = { 'Content-Type': 'application/json' };
   const tok = getToken();
   if (tok) headers['Authorization'] = `Bearer ${tok}`;
@@ -35,11 +35,13 @@ async function request(method, path, body) {
   }
 
   if (res.status === 204) return null;
+  if (responseType === 'blob') return res.blob();
   return res.json();
 }
 
 const get  = (path)       => request('GET',    path);
 const post = (path, body) => request('POST',   path, body);
+const put  = (path, body) => request('PUT',    path, body);
 const del  = (path)       => request('DELETE', path);
 
 // ── Health ─────────────────────────────────────────────────
@@ -61,10 +63,20 @@ export const getCustomer    = (id)  => get(`/customers/${id}`);
 export const createCustomer = (b)   => post('/customers', b);
 export const deleteCustomer = (id)  => del(`/customers/${id}`);
 
+// ── Master configuration ───────────────────────────────────
+export const getMasterConfig = () => get('/master-config');
+export const saveMasterConfig = (rates) => put('/master-config', { rates });
+export const getSystemSettings = () => get('/settings');
+export const saveSystemSettings = (settings) => put('/settings', settings);
+
 // ── Quotations ──────────────────────────────────────────────
 export const listQuotations  = ()    => get('/quotations');
 export const getQuotation    = (id)  => get(`/quotations/${id}`);
+export const getNextQuotationNumber = (docType) => get(`/quotations/next-number?doc_type=${encodeURIComponent(docType)}`);
 export const createQuotation = (b)   => post('/quotations', b);
+export const updateQuotation = (id, b) => put(`/quotations/${id}`, b);
+export const previewQuotationPdf = (b) => request('POST', '/quotations/preview', b, 'blob');
+export const getQuotationPdf = (id) => request('GET', `/quotations/${id}/pdf`, undefined, 'blob');
 export const deleteQuotation = (id)  => del(`/quotations/${id}`);
 
 /** PDF URL for inline preview or download. */
@@ -77,4 +89,5 @@ export const getAuditLog = () => get('/audit-log');
 export const getMe        = ()  => get('/auth/me');
 export const listUsers    = ()  => get('/auth/users');
 export const createUser   = (b) => post('/auth/users', b);
+export const updateUserRole = (id, role) => put(`/auth/users/${id}`, { role });
 export const deleteUser   = (id)=> del(`/auth/users/${id}`);

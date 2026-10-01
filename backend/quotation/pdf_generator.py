@@ -7,6 +7,7 @@ The function returns the absolute path to the saved PDF file.
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -30,7 +31,7 @@ BLACK       = colors.black
 
 # ── Output directory ─────────────────────────────────────────
 BASE_DIR   = Path(__file__).resolve().parent.parent.parent
-OUTPUT_DIR = BASE_DIR / "data" / "pdfs"
+OUTPUT_DIR = Path(os.getenv("PDF_DIR", BASE_DIR / "data" / "pdfs")).expanduser()
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -43,7 +44,19 @@ def _safe(val):
     return str(val) if val is not None else ""
 
 
-def generate_quotation_pdf(quotation_data: dict) -> str:
+def _document_date(quotation_data: dict) -> datetime:
+    value = quotation_data.get("document_date")
+    if isinstance(value, datetime):
+        return value
+    if value:
+        try:
+            return datetime.fromisoformat(str(value))
+        except ValueError:
+            pass
+    return datetime.utcnow()
+
+
+def generate_quotation_pdf(quotation_data: dict, output_path: str | Path | None = None) -> str:
     """
     Generate a Quotation PDF.
     quotation_data keys:
@@ -54,9 +67,11 @@ def generate_quotation_pdf(quotation_data: dict) -> str:
     Returns: absolute path string to the generated PDF.
     """
     doc_type    = quotation_data.get("doc_type", "Quotation")
-    q_num       = quotation_data.get("quotation_number", "QUO-000")
-    filename    = f"{q_num.replace('/', '-')}.pdf"
-    filepath    = OUTPUT_DIR / filename
+    raw_q_num   = _safe(quotation_data.get("quotation_number", "QUO-000"))
+    q_num       = escape(raw_q_num)
+    filename    = f"{raw_q_num.replace('/', '-')}.pdf"
+    filepath    = Path(output_path) if output_path else OUTPUT_DIR / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
 
     doc = SimpleDocTemplate(
         str(filepath),
@@ -81,7 +96,7 @@ def generate_quotation_pdf(quotation_data: dict) -> str:
     orange_style = style("orange", fontName="Helvetica-Bold", fontSize=11, textColor=ORANGE, alignment=TA_RIGHT)
     label_style  = style("label",  fontName="Helvetica",      fontSize=7,  textColor=MUTED, letterSpacing=1)
 
-    today    = datetime.utcnow()
+    today    = _document_date(quotation_data)
     validity = today + timedelta(days=int(quotation_data.get("validity_days", 15)))
 
     story = []
@@ -108,8 +123,8 @@ def generate_quotation_pdf(quotation_data: dict) -> str:
     story.append(HRFlowable(width="100%", thickness=2, color=ORANGE, spaceAfter=4*mm))
 
     # ── Bill To / Document Details row ───────────────────────
-    customer_name = quotation_data.get("customer_name", "")
-    customer_addr = quotation_data.get("customer_address", "")
+    customer_name = escape(_safe(quotation_data.get("customer_name", "")))
+    customer_addr = escape(_safe(quotation_data.get("customer_address", "")))
 
     bill_content = [
         [Paragraph("BILL TO", label_style)],
@@ -142,7 +157,7 @@ def generate_quotation_pdf(quotation_data: dict) -> str:
     story.append(Spacer(1, 4*mm))
 
     # ── Line items table ─────────────────────────────────────
-    job_name = quotation_data.get("job_name", "Packaging")
+    job_name = escape(_safe(quotation_data.get("job_name", "Packaging")))
     qty      = int(quotation_data.get("order_quantity", 0))
     unit_p   = float(quotation_data.get("unit_price", 0))
     subtotal = float(quotation_data.get("subtotal", 0))
@@ -203,7 +218,7 @@ def generate_quotation_pdf(quotation_data: dict) -> str:
         story.append(Spacer(1, 2*mm))
         for line in notes_text.split("\n"):
             if line.strip():
-                story.append(Paragraph(line.strip(), muted_style))
+                story.append(Paragraph(escape(line.strip()), muted_style))
                 story.append(Spacer(1, 1*mm))
 
     story.append(Spacer(1, 6*mm))
@@ -225,18 +240,20 @@ def generate_quotation_pdf(quotation_data: dict) -> str:
     return str(filepath)
 
 
-def generate_proforma_pdf(quotation_data: dict) -> str:
+def generate_proforma_pdf(quotation_data: dict, output_path: str | Path | None = None) -> str:
     """
     Generate a Proforma Invoice PDF.
     Same as quotation but with additional bank details and proforma branding.
     """
     quotation_data = dict(quotation_data)
     quotation_data["doc_type"] = "Proforma Invoice"
-    q_num = quotation_data.get("quotation_number", "PI-000").replace("QUO", "PI")
+    raw_q_num = _safe(quotation_data.get("quotation_number", "PI-000"))
+    q_num = escape(raw_q_num)
     quotation_data["quotation_number"] = q_num
 
-    filename = f"{q_num.replace('/', '-')}.pdf"
-    filepath = OUTPUT_DIR / filename
+    filename = f"{raw_q_num.replace('/', '-')}.pdf"
+    filepath = Path(output_path) if output_path else OUTPUT_DIR / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
 
     # Reuse quotation generator with proforma doc_type
     doc = SimpleDocTemplate(
@@ -261,7 +278,7 @@ def generate_proforma_pdf(quotation_data: dict) -> str:
     orange_style = style("orange", fontName="Helvetica-Bold", fontSize=13, textColor=ORANGE, alignment=TA_RIGHT)
     label_style  = style("label",  fontName="Helvetica",      fontSize=7,  textColor=MUTED, letterSpacing=1)
 
-    today    = datetime.utcnow()
+    today    = _document_date(quotation_data)
     validity = today + timedelta(days=int(quotation_data.get("validity_days", 15)))
 
     story = []
@@ -284,8 +301,8 @@ def generate_proforma_pdf(quotation_data: dict) -> str:
     story.append(HRFlowable(width="100%", thickness=2, color=ORANGE, spaceAfter=4*mm))
 
     # Bill To
-    customer_name = quotation_data.get("customer_name", "")
-    customer_addr = quotation_data.get("customer_address", "")
+    customer_name = escape(_safe(quotation_data.get("customer_name", "")))
+    customer_addr = escape(_safe(quotation_data.get("customer_address", "")))
 
     addr_block = [
         [Paragraph("BILL TO / SHIP TO", label_style)],
@@ -312,7 +329,7 @@ def generate_proforma_pdf(quotation_data: dict) -> str:
     story.append(info_row)
     story.append(Spacer(1, 4*mm))
 
-    job_name = quotation_data.get("job_name", "Packaging")
+    job_name = escape(_safe(quotation_data.get("job_name", "Packaging")))
     qty      = int(quotation_data.get("order_quantity", 0))
     unit_p   = float(quotation_data.get("unit_price", 0))
     subtotal = float(quotation_data.get("subtotal", 0))
@@ -377,7 +394,7 @@ def generate_proforma_pdf(quotation_data: dict) -> str:
         story.append(Spacer(1, 2*mm))
         for line in notes_text.split("\n"):
             if line.strip():
-                story.append(Paragraph(line.strip(), muted_style))
+                story.append(Paragraph(escape(line.strip()), muted_style))
                 story.append(Spacer(1, 1*mm))
 
     story.append(Spacer(1, 6*mm))

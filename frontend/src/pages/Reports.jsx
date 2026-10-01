@@ -5,6 +5,7 @@ import {
   PieChart, Pie, Cell, Legend, CartesianGrid
 } from 'recharts';
 import { MetricCard } from '../components/CostCard';
+import { downloadCsv } from '../services/downloadCsv.js';
 
 const MONTHLY = [
   { month: 'Jan', value: 8, estimates: 9 }, { month: 'Feb', value: 12, estimates: 11 },
@@ -52,6 +53,22 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
+function reportExportRows(activeTab) {
+  const rows = [
+    ['Summary', 'Total Estimates', 124, 'estimates'],
+    ['Summary', 'Total Order Value', 2845000, 'INR'],
+    ['Summary', 'Average Cost per Box', 18.42, 'INR'],
+    ['Summary', 'Conversion Rate', 68, 'percent'],
+    ...MONTHLY.map(row => ['Trend Analysis', `${row.month} Order Value`, row.value, 'INR lakhs']),
+    ...MONTHLY.map(row => ['Trend Analysis', `${row.month} Estimates`, row.estimates, 'estimates']),
+    ...PIE_DATA.map(row => ['Cost Analysis', `${row.name} Share`, row.value, 'percent']),
+    ...PIE_DATA.map(row => ['Module Analysis', `${row.name} Share`, row.value, 'percent']),
+    ...TOP_CUSTOMERS.map(row => ['Customer Analysis', `${row.name} Share`, row.value, 'percent']),
+    ...ORDER_TREND.map(row => ['Trend Analysis', `${row.month} Order Value`, row.value, 'INR lakhs']),
+  ];
+  return activeTab === 'Summary' ? rows : rows.filter(row => row[0] === activeTab);
+}
+
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('Summary');
   const [dateRange, setDateRange] = useState('01 Sep 2026 – 30 Sep 2026');
@@ -69,21 +86,25 @@ export default function Reports() {
           <div style={{ border: '1px solid var(--line)', borderRadius: 8, padding: '8px 14px', fontSize: 12, color: 'var(--muted)', background: 'var(--panel)' }}>
             📅 {dateRange}
           </div>
-          <button className="btn btn-secondary">
+          <button className="btn btn-secondary" onClick={() => downloadCsv(
+            `pacfully-${activeTab.toLowerCase().replaceAll(' ', '-')}-report.csv`,
+            ['Report', 'Metric', 'Value', 'Unit'],
+            reportExportRows(activeTab),
+          )}>
             <Download size={14} /> Export
           </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="tabs-bar">
+      <div className="tabs-bar" role="tablist" aria-label="Report categories">
         {TABS.map(t => (
-          <button key={t} className={`tab-btn ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t}</button>
+          <button key={t} role="tab" aria-selected={activeTab === t} className={`tab-btn ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t}</button>
         ))}
       </div>
 
       {/* Metrics */}
-      <div className="metric-grid" style={{ marginBottom: 20 }}>
+      <div className="metric-grid" style={{ marginBottom: 20, display: activeTab === 'Summary' ? undefined : 'none' }}>
         <MetricCard label="Total Estimates" value="124" detail="+13% vs last month" detailType="up" icon={BarChart3} iconColor="orange" />
         <MetricCard label="Total Order Value" value="₹ 28,45,000" detail="+15% vs last month" detailType="up" icon={TrendingUp} iconColor="green" />
         <MetricCard label="Avg. Cost / Box" value="₹ 18.42" detail="+6% vs last month" detailType="up" icon={Activity} iconColor="blue" />
@@ -91,9 +112,9 @@ export default function Reports() {
       </div>
 
       {/* Charts row 1 */}
-      <div className="grid-col-6-4" style={{ marginBottom: 20 }}>
+      <div className="grid-col-6-4" style={{ marginBottom: 20, display: ['Summary', 'Customer Analysis', 'Trend Analysis'].includes(activeTab) ? undefined : 'none' }}>
         {/* Bar: Estimate Trend */}
-        <div className="panel">
+        <div className="panel" style={{ display: ['Summary', 'Trend Analysis'].includes(activeTab) ? undefined : 'none' }}>
           <div className="panel-header">
             <div>
               <div className="panel-title">Estimate Trend</div>
@@ -112,7 +133,7 @@ export default function Reports() {
         </div>
 
         {/* Pie: Top Customers */}
-        <div className="panel">
+        <div className="panel" style={{ display: ['Summary', 'Customer Analysis'].includes(activeTab) ? undefined : 'none' }}>
           <div className="panel-header">
             <div>
               <div className="panel-title">Top Customers</div>
@@ -141,9 +162,9 @@ export default function Reports() {
       </div>
 
       {/* Charts row 2 */}
-      <div className="grid-col-6-4" style={{ marginBottom: 20 }}>
+      <div className="grid-col-6-4" style={{ marginBottom: 20, display: ['Summary', 'Cost Analysis', 'Module Analysis', 'Trend Analysis'].includes(activeTab) ? undefined : 'none' }}>
         {/* Pie: Cost Distribution */}
-        <div className="panel">
+        <div className="panel" style={{ display: ['Summary', 'Cost Analysis', 'Module Analysis'].includes(activeTab) ? undefined : 'none' }}>
           <div className="panel-header">
             <div>
               <div className="panel-title">Cost Distribution by Module</div>
@@ -187,7 +208,7 @@ export default function Reports() {
         </div>
 
         {/* Line: Order Value Trend */}
-        <div className="panel">
+        <div className="panel" style={{ display: ['Summary', 'Trend Analysis'].includes(activeTab) ? undefined : 'none' }}>
           <div className="panel-header">
             <div>
               <div className="panel-title">Order Value Trend</div>
@@ -210,7 +231,7 @@ export default function Reports() {
       </div>
 
       {/* Not Yet Configured modules */}
-      <div className="panel">
+      <div className="panel" style={{ display: ['Summary', 'Module Analysis'].includes(activeTab) ? undefined : 'none' }}>
         <div className="panel-header">
           <div className="panel-title">Module Performance Analytics</div>
           <div className="panel-sub">Advanced analytics per costing module</div>

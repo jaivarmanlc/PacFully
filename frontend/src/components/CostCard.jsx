@@ -61,8 +61,10 @@ export function RateConfigRow({ masterRate, overrideRate, effectiveRate, onOverr
         <div className="rate-override-input">
           <input
             type="number"
+            min="0"
+            step="any"
             value={overrideRate ?? ''}
-            onChange={(e) => onOverrideChange?.(Number(e.target.value))}
+            onChange={(e) => onOverrideChange?.(e.target.value === '' ? null : Number(e.target.value))}
             placeholder="—"
           />
         </div>

@@ -55,6 +55,23 @@ class Customer(Base):
     estimates   = relationship("Estimate", back_populates="customer", lazy="dynamic")
 
 
+# ── Master configuration ─────────────────────────────────────
+class MasterConfiguration(Base):
+    __tablename__ = "master_configuration"
+
+    id         = Column(Integer, primary_key=True)
+    rates      = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+
+class SystemSettings(Base):
+    __tablename__ = "system_settings"
+
+    id         = Column(Integer, primary_key=True)
+    settings   = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+
 # ── Estimate ─────────────────────────────────────────────────
 class Estimate(Base):
     __tablename__ = "estimates"

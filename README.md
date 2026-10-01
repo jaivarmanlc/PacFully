@@ -694,7 +694,7 @@ Frontend starts at **http://localhost:5173** (or 5174 if 5173 is busy)
 http://localhost:5173
 ```
 
-Click **Get Started** → Login with a seeded email/password account or use **Sign in with Google** → Dashboard. Google sign-in requires the OAuth environment variables described below.
+Before the first backend startup, set `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD` in the root `.env` file. The password must be at least 12 characters. Then click **Get Started** and sign in with that administrator account, or use **Sign in with Google** after configuring the OAuth environment variables below.
 
 ---
 
@@ -717,18 +717,37 @@ VITE_API_URL=http://localhost:8000/api
 VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id
 ```
 
-### Root (`.env`)
+### Backend (`.env` in the repository root)
 
 ```env
-VITE_API_URL=http://localhost:8000/api
+ENVIRONMENT=development
+INITIAL_ADMIN_EMAIL=admin@example.com
+INITIAL_ADMIN_PASSWORD=replace-with-a-unique-password-at-least-12-characters
+INITIAL_ADMIN_NAME=Pacfully Administrator
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:4173
+# Optional; defaults to the local SQLite database when unset.
+# DATABASE_URL=postgresql://user:password@host/database
+# Optional; leave unset locally to use a temporary signing key.
+# SECRET_KEY=generate-a-long-random-secret
 GOOGLE_CLIENT_ID=your-google-oauth-client-id
 ```
 
 Create a Google OAuth 2.0 Web application client and add your frontend origin (for local development, `http://localhost:5173`) to its authorized JavaScript origins. Use the same client ID for both variables. The backend verifies Google's ID token, then creates or updates the user by verified email and records the last login. New Google users are assigned the Estimator role.
 
-For local development, authorize both `http://localhost:5173` and `http://127.0.0.1:5173` if you use both URLs. The backend also loads the root `.env` file through `python-dotenv`; restart both servers after changing environment variables.
+The backend loads the root `.env` file through `python-dotenv`; restart both servers after changing environment variables. The administrator is created only when the users table is empty. Production startup requires `SECRET_KEY`, `INITIAL_ADMIN_EMAIL`, and `INITIAL_ADMIN_PASSWORD`; no built-in login credentials are created.
 
-For production, set both variables in their respective environments, update `VITE_API_URL` to your deployed API domain, and rebuild the frontend.
+### Vercel + Render deployment
+
+The repository includes `frontend/vercel.json` for client-side route refreshes and a `render.yaml` blueprint for the API service. In Vercel, set the project root to `frontend`, the build command to `npm run build`, and the output directory to `dist`. Set these frontend environment variables before deploying:
+
+```env
+VITE_API_URL=https://<your-render-service>.onrender.com/api
+VITE_GOOGLE_CLIENT_ID=<your-google-oauth-client-id>
+```
+
+In Render, create a PostgreSQL database and use its internal connection URL for `DATABASE_URL`. The blueprint generates `SECRET_KEY`; provide `INITIAL_ADMIN_EMAIL`, a unique `INITIAL_ADMIN_PASSWORD` of at least 12 characters, `INITIAL_ADMIN_NAME`, and `CORS_ORIGINS` containing the exact Vercel origin (for example, `https://your-app.vercel.app`). If Google sign-in is enabled, set the same OAuth client ID as `GOOGLE_CLIENT_ID` in Render and `VITE_GOOGLE_CLIENT_ID` in Vercel, and add the Vercel origin to its authorized JavaScript origins.
+
+Quotation PDFs use `PDF_DIR`, defaulting to `data/pdfs`. Render's local filesystem is ephemeral, so configure a persistent disk mounted at `/var/data` and set `PDF_DIR=/var/data/pdfs` if generated PDFs must survive restarts and deploys. Do not commit provider secrets or database URLs.
 
 ---
 
@@ -776,14 +795,11 @@ Each type plugs into the same pipeline without changing the core engine architec
 
 ### Database Portability
 
-The SQLite setup can be migrated to **PostgreSQL** without changing any business logic — only the `DATABASE_URL` in `database.py` needs to change:
+The backend uses SQLite locally by default and accepts a PostgreSQL `DATABASE_URL` in production:
 
-```python
-# SQLite (current)
-DATABASE_URL = f"sqlite:///{DB_PATH}"
-
-# PostgreSQL (production)
-DATABASE_URL = "postgresql://user:pass@host/pacfully"
+```env
+# PostgreSQL (production environment variable)
+DATABASE_URL=postgresql://user:pass@host/pacfully
 ```
 
 ---

@@ -71,7 +71,9 @@ h3 { font-size: 15px; font-weight: 700; }
   z-index: 100;
   overflow-y: auto;
   padding: 0 0 16px;
+  transition: transform 0.2s ease;
 }
+.sidebar-backdrop { display: none; }
 .sidebar-brand {
   display: flex;
   align-items: center;
@@ -208,6 +210,17 @@ h3 { font-size: 15px; font-weight: 700; }
   padding: 0 28px;
   gap: 16px;
   z-index: 90;
+}
+.topbar-menu-btn {
+  display: none;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--ink-3);
+  place-items: center;
+  flex-shrink: 0;
 }
 .topbar-breadcrumb {
   font-size: 12px;
@@ -730,18 +743,75 @@ tbody tr:hover td { background: #FAFBFC; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted-3); }
 
 /* ── Responsive ──────────────────────────────────────────── */
+.login-layout { display: grid; grid-template-columns: 1fr 1fr; }
+.login-form-panel { padding: 48px 64px; }
+.login-brand-panel { display: flex; }
 @media (max-width: 1100px) {
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .grid-col-6-4, .grid-col-4-6 { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
+  .login-layout { grid-template-columns: 1fr; }
+  .login-form-panel { padding: 36px 24px; }
+  .login-brand-panel { display: none; }
   :root { --sidebar-w: 0px; }
-  .sidebar { transform: translateX(-100%); }
+  .sidebar { transform: translateX(-100%); z-index: 120; }
   .sidebar.open { transform: translateX(0); width: 228px; }
-  .topbar { left: 0; padding: 0 16px; }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+    border: 0;
+    background: rgba(26, 29, 35, 0.38);
+  }
+  .topbar { left: 0; padding: 0 16px; gap: 10px; }
+  .topbar-menu-btn { display: grid; }
   .main-content { margin-left: 0; }
-  .page-content { padding: 20px 16px 40px; }
+  .page-content { padding: 20px 16px 40px; min-width: 0; }
   .metric-grid { grid-template-columns: 1fr 1fr; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .form-grid-2, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr 1fr; }
+  .table-wrap { -webkit-overflow-scrolling: touch; }
+  .page-header { flex-wrap: wrap; }
+  .page-header-right { flex-wrap: wrap; }
+  .panel { padding: 16px; }
 }
+@media (max-width: 560px) {
+  :root { --topbar-h: 58px; }
+  .topbar { height: var(--topbar-h); padding: 0 10px; gap: 8px; }
+  .topbar-breadcrumb { min-width: 0; overflow: hidden; white-space: nowrap; font-size: 11px; }
+  .topbar-breadcrumb strong { overflow: hidden; text-overflow: ellipsis; }
+  .topbar-search { min-width: 0; max-width: none; }
+  .topbar-search input { height: 34px; padding-right: 8px; font-size: 12px; }
+  .topbar-search input::placeholder { color: transparent; }
+  .topbar-actions { gap: 6px; margin-left: 0; }
+  .topbar-profile { padding: 3px; border: 0; }
+  .topbar-profile-info, .topbar-profile > svg { display: none; }
+  .topbar-icon-btn { width: 34px; height: 34px; }
+  .page-content { padding: 16px 12px 32px; }
+  .page-header { gap: 12px; margin-bottom: 18px; }
+  .page-header-left { min-width: 0; }
+  .page-header-left h1 { font-size: 23px; overflow-wrap: anywhere; }
+  .page-header-right { width: 100%; align-items: center; }
+  .metric-grid { gap: 8px; }
+  .metric-card { padding: 14px; min-width: 0; }
+  .metric-card-value { font-size: 20px; overflow-wrap: anywhere; }
+  .form-grid-2, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr; }
+  .rate-config { grid-template-columns: 1fr 1fr; padding: 12px; }
+  .action-row { align-items: stretch; flex-direction: column; }
+  .action-row > * { max-width: 100%; }
+  .filter-row .topbar-search { flex: 1 1 100%; }
+  .filter-row .form-select { flex: 1 1 140px; width: auto; }
+  .panel { padding: 14px; }
+  .modal { padding: 20px 16px; max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .modal-footer { flex-wrap: wrap; }
+  .toast { left: 12px; right: 12px; bottom: 12px; justify-content: center; }
+}
+@media (max-width: 360px) {
+  .topbar-breadcrumb { display: none; }
+  .topbar-search input::placeholder { color: var(--muted-2); }
+  .metric-grid { grid-template-columns: 1fr; }
+  .rate-config { grid-template-columns: 1fr; }
+}
+

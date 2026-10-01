@@ -1,49 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Download, Eye, RefreshCw, AlertCircle, CheckCircle2, X, ExternalLink, Trash2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Plus, Search, Download, Eye, RefreshCw, AlertCircle, CheckCircle2, Trash2, Edit2 } from 'lucide-react';
 import { StatusPill } from '../components/CostCard';
-import { listQuotations, deleteQuotation, pdfUrl } from '../services/api';
-
-/* reuse the PDF modal — same component pattern */
-function PdfModal({ quotationId, quotationNumber, onClose }) {
-  const url = pdfUrl(quotationId);
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: '#fff', borderRadius: 12, overflow: 'hidden',
-          width: '80vw', maxWidth: 900, height: '88vh',
-          display: 'flex', flexDirection: 'column',
-          boxShadow: '0 24px 64px rgba(0,0,0,0.25)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid var(--line)' }}>
-          <div>
-            <div style={{ fontFamily: 'Manrope', fontWeight: 700, fontSize: 15 }}>{quotationNumber}</div>
-            <div style={{ fontSize: 11, color: 'var(--muted-2)' }}>Proforma Invoice PDF</div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <a href={url} download={`${quotationNumber}.pdf`} className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Download size={13} /> Download
-            </a>
-            <a href={url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <ExternalLink size={13} /> Open
-            </a>
-            <button className="modal-close" onClick={onClose}><X size={16} /></button>
-          </div>
-        </div>
-        <iframe src={url} title={quotationNumber} style={{ flex: 1, border: 'none', background: '#f0f0f0' }} />
-      </div>
-    </div>
-  );
-}
+import { listQuotations, deleteQuotation, getQuotationPdf } from '../services/api';
+import { QuotationEditor, QuotationPdfModal } from '../components/QuotationDocuments';
 
 export default function Proforma() {
+  const [searchParams] = useSearchParams();
   const [rows,    setRows]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
-  const [search,  setSearch]  = useState('');
+  const [search,  setSearch]  = useState(() => searchParams.get('q') || '');
   const [preview, setPreview] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [toast,   setToast]   = useState(null);
 
   const showToast = (msg, isErr = false) => { setToast({ msg, isErr }); setTimeout(() => setToast(null), 3500); };
@@ -65,6 +34,7 @@ export default function Proforma() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setSearch(searchParams.get('q') || ''); }, [searchParams]);
 
   const handleDelete = async (e, row) => {
     e.stopPropagation();
@@ -74,15 +44,20 @@ export default function Proforma() {
     catch (err) { showToast(err.message, true); }
   };
 
-  const handleDownload = (e, row) => {
+  const handleDownload = async (e, row) => {
     e.stopPropagation();
     if (offline) { showToast('PDF requires backend', true); return; }
-    const a = document.createElement('a');
-    a.href = pdfUrl(row.id);
-    a.download = `${row.quotation_number}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    try {
+      const blob = await getQuotationPdf(row.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${row.quotation_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) { showToast(err.message || 'Unable to download PDF', true); }
   };
 
   const filtered = rows.filter(r =>
@@ -151,6 +126,7 @@ export default function Proforma() {
                   <td><StatusPill status={q.status} /></td>
                   <td>
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                      <button className="btn btn-ghost btn-sm btn-icon" title="Edit document" onClick={e => { e.stopPropagation(); if (!offline) setEditingId(q.id); }}><Edit2 size={13} /></button>
                       <button className="btn btn-ghost btn-sm btn-icon" title="Preview PDF"
                         onClick={e => { e.stopPropagation(); if (offline) { showToast('PDF requires backend', true); return; } setPreview({ id: q.id, number: q.quotation_number }); }}>
                         <Eye size={13} />
@@ -183,7 +159,8 @@ export default function Proforma() {
         </div>
       </div>
 
-      {preview && <PdfModal quotationId={preview.id} quotationNumber={preview.number} onClose={() => setPreview(null)} />}
+      {editingId && <QuotationEditor quotationId={editingId} onClose={() => setEditingId(null)} onSaved={async () => { await load(); showToast('Proforma updated'); }} />}
+      {preview && <QuotationPdfModal quotationId={preview.id} quotationNumber={preview.number} onClose={() => setPreview(null)} />}
 
       {toast && (
         <div className="toast" style={{ background: toast.isErr ? '#C53030' : 'var(--ink-2)' }}>

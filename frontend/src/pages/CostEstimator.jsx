@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo.jsx';
 import {
@@ -12,10 +12,11 @@ import {
   PieChart, Pie, Cell
 } from 'recharts';
 import { Stepper, RateConfigRow, CalcTracePanel, money } from '../components/CostCard';
+import { listCustomers, createCustomer, getMasterConfig, getNextQuotationNumber, previewQuotationPdf, saveEstimate, finalizeEstimate, createQuotation } from '../services/api';
 
 // ── Constants ─────────────────────────────────────────────
-const STEPS = ['Layout & AI Extraction', 'Technical Data', 'Costing Modules', 'Summary & Margin', 'Quotation / Proforma'];
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const STEPS = ['Layout & AI Extraction', 'Technical Data', 'Costing Modules', 'Summary & Margin', 'Quotation / Proforma'];
 
 const MODULE_TABS = ['Kappa', 'Wrapper', 'Printing', 'Lamination', 'Glue', 'Punching', 'Embellishments', 'Accessories', 'Conversion'];
 
@@ -36,18 +37,18 @@ const AI_FIELDS = [
 
 const INITIAL_FORM = {
   quantity: 1000, margin_percent: 20,
-  kappa_thickness_mm: 1.8, kappa_gsm_at_1mm: 1200, kappa_sheet_length_mm: 1000, kappa_sheet_width_mm: 700, kappa_ups: 2, kappa_wastage_percent: 10, kappa_rate_per_kg: 80,
+  kappa_material: 'Kappa Board', kappa_thickness_mm: 1.8, kappa_gsm_at_1mm: 1200, kappa_sheet_length_mm: 1000, kappa_sheet_width_mm: 700, kappa_ups: 2, kappa_wastage_percent: 10, kappa_rate_per_kg: 80,
   kappa_master_rate: 80, kappa_override_rate: null,
   wrapper_gsm: 128, wrapper_ups: 1, wrapper_sheet_length_mm: 1000, wrapper_sheet_width_mm: 700, wrapper_wastage_percent: 10, wrapper_make_ready_sheets: 150, wrapper_rate_per_kg: 95,
   wrapper_master_rate: 95, wrapper_override_rate: null,
-  print_sheet_size: '28x40', print_master_rate: 6500, print_override_rate: null,
+  print_sheet_size: '28x40', print_master_rate: 6500, print_additional_rate: 0.8, print_override_rate: null,
   lamination_type: 'thermal', lamination_sheet_length_in: 28, lamination_sheet_width_in: 40,
   lam_master_rate: 1.10, lam_override_rate: null,
   glue_lines: [
     { name: 'Top Wrapper', area_sq_in: 620, gsm: 20, rate_per_kg: 90 },
     { name: 'Bottom Wrapper', area_sq_in: 480, gsm: 20, rate_per_kg: 90 },
   ],
-  punching_material: 'Kappa', punching_machine_rate_per_hour: 400,
+  punching_material: 'Kappa', punching_machine_rate_per_hour: 400, punching_speed: 400, punching_setup_hours: 0.5,
   embellishment_area_sq_in: 24, embellishment_rate_per_sq_in: 2.5, embellishment_setup: 800, embellishment_minimum: 1000, embellishment_type: 'Gold Foil',
   accessories: [
     { name: 'Magnet Snap', quantity_per_box: 1, unit_cost: 3.5 },
@@ -55,6 +56,16 @@ const INITIAL_FORM = {
   ],
   conversion_machine_rate: 0, conversion_machine_hours: 0, conversion_labour_rate: 0, conversion_labour_hours: 0, conversion_setup: 0,
   eb_method: 'box', eb_value: 0,
+};
+
+const PRINT_RATE_KEYS = {
+  '15x20': ['print_15x20_first', 'print_15x20_additional'],
+  '20x28': ['print_20x28_first', 'print_20x28_additional'],
+  '28x40': ['print_28x40_first', 'print_28x40_additional'],
+};
+const PUNCH_SPEED_KEYS = {
+  Kappa: 'punching_speed_kappa', Wrapper: 'punching_speed_wrapper', FBB: 'punching_speed_fbb',
+  Duplex: 'punching_speed_duplex', 'Foam/EVA/EPE': 'punching_speed_foam',
 };
 
 function moduleInputs(module, form, wrapperFinalSheets) {
@@ -87,13 +98,18 @@ function moduleInputs(module, form, wrapperFinalSheets) {
         wrapper_override_rate: form.wrapper_override_rate,
       };
     case 'Printing':
-      return { quantity, wrapper_final_sheets: wrapperFinalSheets, print_sheet_size: form.print_sheet_size, print_override_rate: form.print_override_rate };
+      return {
+        quantity, wrapper_final_sheets: wrapperFinalSheets, print_sheet_size: form.print_sheet_size,
+        print_master_rate: form.print_master_rate, print_additional_rate: form.print_additional_rate,
+        print_override_rate: form.print_override_rate,
+      };
     case 'Lamination':
       return {
         quantity, wrapper_final_sheets: wrapperFinalSheets,
         lamination_type: form.lamination_type,
         lamination_sheet_length_in: form.lamination_sheet_length_in,
         lamination_sheet_width_in: form.lamination_sheet_width_in,
+        lam_master_rate: form.lam_master_rate,
         lam_override_rate: form.lam_override_rate,
       };
     case 'Glue':
@@ -102,6 +118,8 @@ function moduleInputs(module, form, wrapperFinalSheets) {
       return {
         quantity, punching_material: form.punching_material,
         punching_machine_rate_per_hour: form.punching_machine_rate_per_hour,
+        punching_speed: form.punching_speed,
+        punching_setup_hours: form.punching_setup_hours,
         ...(form.punching_material === 'Wrapper' ? { wrapper_final_sheets: wrapperFinalSheets } : {}),
       };
     case 'Embellishments':
@@ -142,12 +160,109 @@ function Field({ label, value, onChange, type = 'number', options, readOnly }) {
 }
 
 // ── Step 1: Layout Upload + AI Extraction ─────────────────
+const DEMO_CUSTOMERS = [
+  { name: 'Luxe Beauty Pvt Ltd' },
+  { name: 'Aura Skincare' },
+  { name: 'Veda Naturals' },
+  { name: 'Elite Brands' },
+];
+
+function AddCustomerModal({ onClose, onSaved }) {
+  const [form, setForm] = useState({ name: '', contact: '', email: '', phone: '', city: '', state: '', address: '', gst_number: '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const set = (key, value) => setForm(current => ({ ...current, [key]: value }));
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!form.name.trim()) {
+      setError('Customer name is required');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const created = await createCustomer({ ...form, name: form.name.trim() });
+      onSaved(created);
+    } catch (err) {
+      setError(err.message || 'Unable to add customer');
+      setSaving(false);
+    }
+  };
+
+  const fields = [
+    ['name', 'Company Name *'], ['contact', 'Contact Person'], ['email', 'Email'],
+    ['phone', 'Phone'], ['city', 'City'], ['state', 'State'], ['gst_number', 'GST Number'],
+  ];
+
+  return (
+    <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+      <form className="modal" style={{ width: 520 }} role="dialog" aria-modal="true" aria-labelledby="new-customer-title" onSubmit={handleSubmit}>
+        <div className="modal-header">
+          <div>
+            <span className="eyebrow">New Customer</span>
+            <h2 id="new-customer-title">Add Customer</h2>
+            <p>Enter the company details to create a customer record.</p>
+          </div>
+          <button className="modal-close" type="button" aria-label="Close" onClick={onClose} disabled={saving}><X size={16} /></button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {fields.map(([key, label]) => (
+            <div className="form-group" key={key} style={key === 'name' ? { gridColumn: '1 / -1' } : {}}>
+              <label className="form-label" htmlFor={`new-customer-${key}`}>{label}</label>
+              <input
+                id={`new-customer-${key}`}
+                className="form-input"
+                type={key === 'email' ? 'email' : 'text'}
+                value={form[key]}
+                onChange={event => set(key, event.target.value)}
+                required={key === 'name'}
+              />
+            </div>
+          ))}
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label" htmlFor="new-customer-address">Address</label>
+            <textarea id="new-customer-address" className="form-input" style={{ height: 64, paddingTop: 8, resize: 'vertical' }} value={form.address} onChange={event => set('address', event.target.value)} />
+          </div>
+        </div>
+        {error && <div role="alert" style={{ color: '#C53030', fontSize: 12, marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}><AlertCircle size={13} /> {error}</div>}
+        <div className="modal-footer">
+          <button className="btn btn-secondary" type="button" onClick={onClose} disabled={saving}>Cancel</button>
+          <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Add Customer'}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
   const [file, setFile] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [extracted, setExtracted] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [customers, setCustomers] = useState(DEMO_CUSTOMERS);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [showDimensions, setShowDimensions] = useState(false);
+  const previewRef = useRef(null);
   const fileRef = useRef();
+
+  useEffect(() => {
+    let active = true;
+    listCustomers().then(data => {
+      if (!active) return;
+      const rows = Array.isArray(data) ? data : [];
+      setCustomers(rows);
+      setCustomer(current => rows.some(row => row.name === current) ? current : (rows[0]?.name || ''));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [setCustomer]);
+
+  const handleCustomerSaved = (created) => {
+    setCustomers(current => [...current.filter(item => item.id !== created.id), created]);
+    setCustomer(created.name);
+    setShowAddCustomer(false);
+  };
 
   const handleFile = (f) => {
     if (!f) return;
@@ -163,6 +278,18 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
         setTimeout(() => { setExtracting(false); setExtracted(true); }, 400);
       }
     }, 500);
+  };
+
+  const handleDownloadPreview = () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 130"><rect x="40" y="30" width="140" height="70" fill="#FFF1ED" stroke="#FF5A3A" stroke-width="1.5" stroke-dasharray="4,3"/><rect x="40" y="0" width="140" height="30" fill="#FFE8E2" stroke="#FF7A5C"/><rect x="40" y="100" width="140" height="30" fill="#FFE8E2" stroke="#FF7A5C"/><rect x="0" y="30" width="40" height="70" fill="#FFF8F5" stroke="#FF7A5C"/><rect x="180" y="30" width="40" height="70" fill="#FFF8F5" stroke="#FF7A5C"/><text x="110" y="68" text-anchor="middle" font-size="10" fill="#FF5A3A">220 mm</text></svg>';
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'layout-preview.svg';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const progressSteps = [
@@ -183,15 +310,13 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
             <label className="form-label">Customer</label>
             <div style={{ position: 'relative' }}>
               <select className="form-select" value={customer} onChange={e => setCustomer(e.target.value)}>
-                <option>Luxe Beauty Pvt Ltd</option>
-                <option>Aura Skincare</option>
-                <option>Veda Naturals</option>
-                <option>Elite Brands</option>
+                {!customers.length && <option value="">Select a customer</option>}
+                {customers.map((row, index) => <option key={row.id ?? row.name ?? index} value={row.name}>{row.name}</option>)}
               </select>
             </div>
           </div>
           <Field label="Job Name" type="text" value={jobName} onChange={setJobName} />
-          <button className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button type="button" className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setShowAddCustomer(true)}>
             <Plus size={13} /> Add New
           </button>
         </div>
@@ -241,7 +366,7 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
                 </div>
 
                 {/* Dieline preview */}
-                <div style={{ background: '#FFFAF8', border: '1px solid var(--orange-border)', borderRadius: 8, padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-around', minHeight: 160 }}>
+                <div ref={previewRef} style={{ background: '#FFFAF8', border: '1px solid var(--orange-border)', borderRadius: 8, padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-around', minHeight: 160 }}>
                   <div style={{ position: 'relative' }}>
                     {/* Simple dieline SVG */}
                     <svg width="220" height="130" viewBox="0 0 220 130">
@@ -333,9 +458,9 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
             ))}
 
             <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-              <button className="btn btn-secondary btn-sm">3D Derive</button>
-              <button className="btn btn-secondary btn-sm">3D Preview</button>
-              <button className="btn btn-secondary btn-sm">Render</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowDimensions(true)}>View dimensions</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Preview layout</button>
+              <button className="btn btn-secondary btn-sm" onClick={handleDownloadPreview}>Download preview</button>
             </div>
           </div>
 
@@ -371,6 +496,23 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
           Continue to Technical Data <ArrowRight size={15} />
         </button>
       </div>
+      {showDimensions && (
+        <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setShowDimensions(false); }}>
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="derived-dimensions-title" style={{ width: 420 }}>
+            <div className="modal-header">
+              <div><span className="eyebrow">Layout extraction</span><h2 id="derived-dimensions-title">Extracted dimensions</h2></div>
+              <button className="modal-close" type="button" aria-label="Close dimensions" onClick={() => setShowDimensions(false)}><X size={16} /></button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              {[['Length', '320 mm'], ['Width', '120 mm'], ['Height', '80 mm']].map(([label, value]) => (
+                <div key={label}><div className="form-label">{label}</div><strong>{value}</strong></div>
+              ))}
+            </div>
+            <div className="modal-footer"><button className="btn btn-primary" type="button" onClick={() => setShowDimensions(false)}>Done</button></div>
+          </section>
+        </div>
+      )}
+      {showAddCustomer && <AddCustomerModal onClose={() => setShowAddCustomer(false)} onSaved={handleCustomerSaved} />}
     </div>
   );
 }
@@ -484,7 +626,7 @@ function StepTechnicalData({ form, setForm, onNext, onBack }) {
 }
 
 // ── Step 3: Costing Modules ────────────────────────────────
-function StepCostingModules({ form, setForm, result, moduleResults, onCalculate, onCalculateModule, calculatingAll, calculatingModule, onNext, onBack }) {
+function StepCostingModules({ form, setForm, masterRates, result, moduleResults, onCalculate, onCalculateModule, calculatingAll, calculatingModule, onNext, onBack }) {
   const [activeTab, setActiveTab] = useState('Kappa');
   const update = (key, val) => setForm(f => ({ ...f, [key]: val }));
   const line = moduleResults[activeTab] ?? result?.lines?.find(l => l.module === activeTab);
@@ -518,12 +660,12 @@ function StepCostingModules({ form, setForm, result, moduleResults, onCalculate,
       </div>
 
       {/* Module panels */}
-      {activeTab === 'Kappa' && <KappaModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
+      {activeTab === 'Kappa' && <KappaModule form={form} update={update} masterRates={masterRates} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
       {activeTab === 'Wrapper' && <WrapperModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Printing' && <PrintingModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Lamination' && <LaminationModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Glue' && <GlueModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Punching' && <PunchingModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
+      {activeTab === 'Printing' && <PrintingModule form={form} update={update} masterRates={masterRates} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
+      {activeTab === 'Lamination' && <LaminationModule form={form} update={update} masterRates={masterRates} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
+      {activeTab === 'Glue' && <GlueModule form={form} update={update} masterRates={masterRates} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
+      {activeTab === 'Punching' && <PunchingModule form={form} update={update} masterRates={masterRates} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
       {activeTab === 'Embellishments' && <EmbellishmentsModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
       {activeTab === 'Accessories' && <AccessoriesModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
       {activeTab === 'Conversion' && <ConfigRequiredModule title="Conversion" desc="Machine + Labour + Setup formula is pending business confirmation." />}
@@ -559,7 +701,7 @@ function ModuleResultCard({ line, onCalculate, calculating }) {
 }
 
 // ── Kappa Module ───────────────────────────────────────────
-function KappaModule({ form, update, line, onCalculate, calculating }) {
+function KappaModule({ form, update, masterRates, line, onCalculate, calculating }) {
   const effectiveRate = form.kappa_override_rate ?? form.kappa_master_rate;
   return (
     <div className="panel" style={{ marginBottom: 0 }}>
@@ -572,7 +714,13 @@ function KappaModule({ form, update, line, onCalculate, calculating }) {
       </div>
 
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Board Type" type="text" value="Kappa Board" readOnly />
+        <Field label="Board Type" options={['Kappa Board', 'FBB', 'Duplex Board']} value={form.kappa_material} onChange={value => {
+          const rateKey = { 'Kappa Board': 'kappa_rate_per_kg', FBB: 'fbb_rate_per_kg', 'Duplex Board': 'duplex_board_rate_per_kg' }[value];
+          const rate = masterRates?.[rateKey] ?? form.kappa_master_rate;
+          update('kappa_material', value);
+          update('kappa_master_rate', rate);
+          update('kappa_rate_per_kg', rate);
+        }} />
         <Field label="GSM" value={form.kappa_gsm_at_1mm} onChange={v => update('kappa_gsm_at_1mm', v)} />
         <Field label="Thickness (mm)" value={form.kappa_thickness_mm} onChange={v => update('kappa_thickness_mm', v)} />
         <Field label="Sheet Size (L × W mm)" type="text" value={`${form.kappa_sheet_length_mm} × ${form.kappa_sheet_width_mm}`} readOnly />
@@ -646,7 +794,7 @@ function WrapperModule({ form, update, line, onCalculate, calculating }) {
 }
 
 // ── Printing Module ────────────────────────────────────────
-function PrintingModule({ form, update, line, onCalculate, calculating }) {
+function PrintingModule({ form, update, masterRates, line, onCalculate, calculating }) {
   return (
     <div className="panel">
       <div className="panel-header">
@@ -671,18 +819,25 @@ function PrintingModule({ form, update, line, onCalculate, calculating }) {
             <Field label="Wastage (%)" value={form.wrapper_wastage_percent} readOnly />
           </div>
           <div style={{ marginBottom: 16 }}>
-            <div className="form-label" style={{ marginBottom: 8 }}>Rate Configuration (₹/sheet)</div>
+            <div className="form-label" style={{ marginBottom: 8 }}>First 1,000 Sheets Rate (₹ flat)</div>
             <RateConfigRow
               masterRate={form.print_master_rate}
               overrideRate={form.print_override_rate}
               effectiveRate={form.print_override_rate ?? form.print_master_rate}
               onOverrideChange={v => update('print_override_rate', v)}
               onReset={() => update('print_override_rate', null)}
+              label="First 1,000 sheets (₹ flat)"
             />
+            <div style={{ fontSize: 11, color: 'var(--muted-2)', marginTop: 6 }}>Additional sheets: ₹ {Number(form.print_additional_rate || 0).toFixed(2)} each</div>
           </div>
           <div>
             <div className="form-label" style={{ marginBottom: 8 }}>Sheet Size</div>
-            <Field label="" options={['15x20', '20x28', '28x40']} value={form.print_sheet_size} onChange={v => update('print_sheet_size', v)} />
+            <Field label="" options={['15x20', '20x28', '28x40']} value={form.print_sheet_size} onChange={value => {
+              const [firstKey, additionalKey] = PRINT_RATE_KEYS[value];
+              update('print_sheet_size', value);
+              update('print_master_rate', masterRates?.[firstKey] ?? form.print_master_rate);
+              update('print_additional_rate', masterRates?.[additionalKey] ?? form.print_additional_rate);
+            }} />
           </div>
         </div>
         {/* Box preview */}
@@ -708,8 +863,8 @@ function PrintingModule({ form, update, line, onCalculate, calculating }) {
 }
 
 // ── Lamination ─────────────────────────────────────────────
-function LaminationModule({ form, update, line, onCalculate, calculating }) {
-  const masterRate = { thermal: 1.10, cold: 0.70, dry: 0.80 }[form.lamination_type] ?? 1.10;
+function LaminationModule({ form, update, masterRates, line, onCalculate, calculating }) {
+  const masterRate = form.lam_master_rate;
   return (
     <div className="panel">
       <div className="panel-header">
@@ -717,7 +872,10 @@ function LaminationModule({ form, update, line, onCalculate, calculating }) {
         <div className="panel-sub">Cost = Sheet Area × Rate / 100 sq.in × Final Wrapper Sheets</div>
       </div>
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Type" options={['thermal', 'cold', 'dry']} value={form.lamination_type} onChange={v => update('lamination_type', v)} />
+        <Field label="Type" options={['thermal', 'cold', 'dry']} value={form.lamination_type} onChange={value => {
+          update('lamination_type', value);
+          update('lam_master_rate', masterRates?.[`lamination_${value}`] ?? form.lam_master_rate);
+        }} />
         <Field label="Sheet L (in)" value={form.lamination_sheet_length_in} onChange={v => update('lamination_sheet_length_in', v)} />
         <Field label="Sheet W (in)" value={form.lamination_sheet_width_in} onChange={v => update('lamination_sheet_width_in', v)} />
       </div>
@@ -731,7 +889,7 @@ function LaminationModule({ form, update, line, onCalculate, calculating }) {
 }
 
 // ── Glue ───────────────────────────────────────────────────
-function GlueModule({ form, update, line, onCalculate, calculating }) {
+function GlueModule({ form, update, masterRates, line, onCalculate, calculating }) {
   const updateLine = (i, key, val) => {
     const next = form.glue_lines.map((l, idx) => idx === i ? { ...l, [key]: val } : l);
     update('glue_lines', next);
@@ -757,7 +915,7 @@ function GlueModule({ form, update, line, onCalculate, calculating }) {
             <input className="form-input" type="number" value={gl.rate_per_kg} onChange={e => updateLine(i, 'rate_per_kg', Number(e.target.value))} />
           </div>
         ))}
-        <button className="btn btn-secondary btn-sm" onClick={() => update('glue_lines', [...form.glue_lines, { name: 'Component', area_sq_in: 0, gsm: 20, rate_per_kg: 90 }])}>
+        <button className="btn btn-secondary btn-sm" onClick={() => update('glue_lines', [...form.glue_lines, { name: 'Component', area_sq_in: 0, gsm: 20, rate_per_kg: masterRates?.glue_rate_per_kg ?? 90 }])}>
           <Plus size={13} /> Add Component
         </button>
       </div>
@@ -770,7 +928,7 @@ function GlueModule({ form, update, line, onCalculate, calculating }) {
 }
 
 // ── Punching ───────────────────────────────────────────────
-function PunchingModule({ form, update, line, onCalculate, calculating }) {
+function PunchingModule({ form, update, masterRates, line, onCalculate, calculating }) {
   return (
     <div className="panel">
       <div className="panel-header">
@@ -778,7 +936,10 @@ function PunchingModule({ form, update, line, onCalculate, calculating }) {
         <div className="panel-sub">Cost = (Qty ÷ Speed + Setup Hrs) × Machine Rate</div>
       </div>
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Material" options={['Kappa', 'Wrapper', 'FBB', 'Duplex', 'Foam/EVA/EPE']} value={form.punching_material} onChange={v => update('punching_material', v)} />
+        <Field label="Material" options={['Kappa', 'Wrapper', 'FBB', 'Duplex', 'Foam/EVA/EPE']} value={form.punching_material} onChange={value => {
+          update('punching_material', value);
+          update('punching_speed', masterRates?.[PUNCH_SPEED_KEYS[value]] ?? form.punching_speed);
+        }} />
         <Field label="Machine Rate (₹/hr)" value={form.punching_machine_rate_per_hour} onChange={v => update('punching_machine_rate_per_hour', v)} />
       </div>
       <div className="grid-col-6-4" style={{ gap: 16 }}>
@@ -1017,12 +1178,108 @@ function StepSummary({ form, setForm, result, onCalculate, onNext, onBack }) {
 }
 
 // ── Step 5: Quotation / Proforma ───────────────────────────
-function StepQuotation({ form, result, customer, jobName, onBack, onSave }) {
+function StepQuotation({ form, result, customer, jobName, onBack, onSave, saving }) {
   const [docType, setDocType] = useState('Quotation');
-  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  const sp = result ? result.cost_per_box / (1 - form.margin_percent / 100) : 0;
-  const total = sp * form.quantity;
-  const gst = total * 0.18;
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
+  const [pdfAction, setPdfAction] = useState('');
+  const [pdfError, setPdfError] = useState('');
+  const [numberEdited, setNumberEdited] = useState(false);
+  const [customerRecords, setCustomerRecords] = useState([]);
+  const [addressEdited, setAddressEdited] = useState(false);
+  const [document, setDocument] = useState(() => {
+    const localDate = new Date();
+    localDate.setMinutes(localDate.getMinutes() - localDate.getTimezoneOffset());
+    return {
+      quotation_number: '', document_date: localDate.toISOString().slice(0, 10),
+      customer_name: customer, customer_address: '', job_name: jobName,
+      order_quantity: form.quantity,
+      unit_price: result ? result.cost_per_box / (1 - form.margin_percent / 100) : 0,
+      gst_percent: 18, validity_days: 15,
+      notes: '1. Prices are valid for 15 days.\n2. This is a budgetary quotation.\n3. Final pricing may vary based on final artwork and specifications.',
+    };
+  });
+  const updateDocument = (key, value) => setDocument(current => ({ ...current, [key]: value }));
+
+  useEffect(() => {
+    let active = true;
+    getNextQuotationNumber(docType).then(({ quotation_number }) => {
+      if (active && !numberEdited && quotation_number) {
+        setDocument(current => ({ ...current, quotation_number }));
+      }
+    }).catch(() => {
+      if (!active || numberEdited) return;
+      const localDate = new Date();
+      const datePart = `${localDate.getFullYear()}${String(localDate.getMonth() + 1).padStart(2, '0')}${String(localDate.getDate()).padStart(2, '0')}`;
+      const prefix = docType === 'Proforma Invoice' ? 'PI' : 'QUO';
+      setDocument(current => ({ ...current, quotation_number: current.quotation_number || `${prefix}-${datePart}-${Date.now().toString().slice(-5)}` }));
+    });
+    return () => { active = false; };
+  }, [docType, numberEdited]);
+
+  useEffect(() => {
+    let active = true;
+    listCustomers().then(records => { if (active && Array.isArray(records)) setCustomerRecords(records); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (addressEdited) return;
+    const selected = customerRecords.find(record => record.name?.trim().toLowerCase() === document.customer_name.trim().toLowerCase());
+    const address = selected
+      ? [selected.address, [selected.city, selected.state].filter(Boolean).join(', ')].filter(Boolean).join('\n')
+      : '';
+    if (address !== document.customer_address) updateDocument('customer_address', address);
+  }, [addressEdited, customerRecords, document.customer_address, document.customer_name]);
+
+  const formatDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  const today = formatDate(document.document_date);
+  const quantity = Number(document.order_quantity) || 0;
+  const unitPrice = Number(document.unit_price) || 0;
+  const total = quantity * unitPrice;
+  const gstPercent = Number(document.gst_percent) || 0;
+  const gst = total * gstPercent / 100;
+  const grandTotal = total + gst;
+  const validUntil = new Date(`${document.document_date}T00:00:00`);
+  validUntil.setDate(validUntil.getDate() + (Number(document.validity_days) || 0));
+  const validUntilText = Number.isNaN(validUntil.getTime()) ? '—' : formatDate(validUntil.toISOString().slice(0, 10));
+
+  const getDocumentPdf = async () => previewQuotationPdf({
+    ...document,
+    quotation_number: document.quotation_number.trim() || null,
+    doc_type: docType,
+    order_quantity: Number(document.order_quantity),
+    unit_price: Number(document.unit_price),
+    gst_percent: Number(document.gst_percent),
+    validity_days: Number(document.validity_days),
+  });
+
+  const handlePdfAction = async (action) => {
+    setPdfAction(action);
+    setPdfError('');
+    try {
+      const blob = await getDocumentPdf();
+      const url = URL.createObjectURL(blob);
+      if (action === 'preview') {
+        if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+        setPdfPreviewUrl(url);
+      } else {
+        const link = window.document.createElement('a');
+        link.href = url;
+        link.download = `${document.quotation_number.trim() || docType.replaceAll(' ', '-')}.pdf`;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      setPdfError(error.message || 'Unable to generate PDF');
+    } finally {
+      setPdfAction('');
+    }
+  };
+
+  const closePdfPreview = () => {
+    if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+    setPdfPreviewUrl(null);
+  };
 
   return (
     <div>
@@ -1056,33 +1313,49 @@ function StepQuotation({ form, result, customer, jobName, onBack, onSave }) {
             <div className="form-grid-2">
               <div className="form-group">
                 <label className="form-label">Quotation No.</label>
-                <input className="form-input" readOnly value="QUO-2026-09-L14" />
+                <input className="form-input" value={document.quotation_number} onChange={event => { setNumberEdited(Boolean(event.target.value)); updateDocument('quotation_number', event.target.value); }} />
               </div>
               <div className="form-group">
                 <label className="form-label">Date</label>
-                <input className="form-input" readOnly value={today} />
+                <input className="form-input" type="date" value={document.document_date} onChange={event => updateDocument('document_date', event.target.value)} />
               </div>
             </div>
             <div className="form-group" style={{ marginTop: 12 }}>
               <label className="form-label">Customer</label>
-              <input className="form-input" readOnly value={customer} />
+              <input className="form-input" value={document.customer_name} onChange={event => updateDocument('customer_name', event.target.value)} />
             </div>
             <div className="form-group" style={{ marginTop: 12 }}>
-              <label className="form-label">120 Business Park, Chennai – 600001</label>
-              <input className="form-input" readOnly value="Tamil Nadu, India" />
+              <label className="form-label">Billing Address</label>
+              <textarea className="form-input" rows={2} value={document.customer_address} onChange={event => { setAddressEdited(true); updateDocument('customer_address', event.target.value); }} />
+            </div>
+            <div className="form-group" style={{ marginTop: 12 }}>
+              <label className="form-label">Job / Product Description</label>
+              <input className="form-input" value={document.job_name} onChange={event => updateDocument('job_name', event.target.value)} />
+            </div>
+            <div className="form-grid-2" style={{ marginTop: 12 }}>
+              <div className="form-group">
+                <label className="form-label">Quantity</label>
+                <input className="form-input" type="number" min="1" value={document.order_quantity} onChange={event => updateDocument('order_quantity', event.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Unit Price (₹)</label>
+                <input className="form-input" type="number" min="0" step="0.01" value={document.unit_price} onChange={event => updateDocument('unit_price', event.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">GST (%)</label>
+                <input className="form-input" type="number" min="0" max="99.99" step="0.01" value={document.gst_percent} onChange={event => updateDocument('gst_percent', event.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Validity (days)</label>
+                <input className="form-input" type="number" min="0" value={document.validity_days} onChange={event => updateDocument('validity_days', event.target.value)} />
+              </div>
             </div>
           </div>
 
           {/* Terms */}
           <div className="panel">
             <div className="panel-title" style={{ marginBottom: 12 }}>Terms & Conditions</div>
-            {[
-              '1. Prices are valid for 15 days.',
-              '2. This is a budgetary quotation.',
-              '3. Final pricing may vary based on final artwork and specifications.',
-            ].map(t => (
-              <div key={t} style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>{t}</div>
-            ))}
+            <textarea className="form-input" rows={5} value={document.notes} onChange={event => updateDocument('notes', event.target.value)} aria-label="Terms and conditions" />
           </div>
         </div>
 
@@ -1095,8 +1368,9 @@ function StepQuotation({ form, result, customer, jobName, onBack, onSave }) {
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontFamily: 'Manrope', fontSize: 15, fontWeight: 700 }}>{docType.toUpperCase()}</div>
-              <div style={{ fontSize: 11, color: 'var(--muted-2)' }}>QUO-2026-09-L14</div>
+              <div style={{ fontSize: 11, color: 'var(--muted-2)' }}>{document.quotation_number || 'Number assigned on save'}</div>
               <div style={{ fontSize: 11, color: 'var(--muted-2)' }}>{today}</div>
+              <div style={{ fontSize: 10, color: 'var(--muted-2)' }}>Valid until {validUntilText}</div>
             </div>
           </div>
 
@@ -1105,8 +1379,8 @@ function StepQuotation({ form, result, customer, jobName, onBack, onSave }) {
           {/* Bill to */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted-2)', marginBottom: 4 }}>Bill To</div>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>{customer}</div>
-            <div style={{ fontSize: 11, color: 'var(--muted)' }}>120 Business Park, Chennai – 600001</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{document.customer_name || 'Customer name'}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'pre-line' }}>{document.customer_address || 'Billing address'}</div>
           </div>
 
           {/* Line items */}
@@ -1121,9 +1395,9 @@ function StepQuotation({ form, result, customer, jobName, onBack, onSave }) {
             </thead>
             <tbody>
               <tr>
-                <td style={{ fontSize: 12, padding: '8px 0', borderBottom: '1px solid var(--line-2)' }}>{jobName || 'Luxury Rigid Box'}</td>
-                <td style={{ textAlign: 'right', fontSize: 12, padding: '8px 0', borderBottom: '1px solid var(--line-2)' }}>{form.quantity.toLocaleString()}</td>
-                <td style={{ textAlign: 'right', fontSize: 12, padding: '8px 0', borderBottom: '1px solid var(--line-2)', fontFamily: 'Manrope', fontWeight: 600 }}>₹ {sp.toFixed(2)}</td>
+                <td style={{ fontSize: 12, padding: '8px 0', borderBottom: '1px solid var(--line-2)' }}>{document.job_name || 'Packaging'}</td>
+                <td style={{ textAlign: 'right', fontSize: 12, padding: '8px 0', borderBottom: '1px solid var(--line-2)' }}>{quantity.toLocaleString()}</td>
+                <td style={{ textAlign: 'right', fontSize: 12, padding: '8px 0', borderBottom: '1px solid var(--line-2)', fontFamily: 'Manrope', fontWeight: 600 }}>₹ {unitPrice.toFixed(2)}</td>
                 <td style={{ textAlign: 'right', fontSize: 12, padding: '8px 0', borderBottom: '1px solid var(--line-2)', fontFamily: 'Manrope', fontWeight: 600 }}>₹ {total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
               </tr>
             </tbody>
@@ -1136,36 +1410,52 @@ function StepQuotation({ form, result, customer, jobName, onBack, onSave }) {
               <span style={{ fontFamily: 'Manrope', fontWeight: 600 }}>₹ {total.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-              <span style={{ color: 'var(--muted)' }}>GST (18%)</span>
+              <span style={{ color: 'var(--muted)' }}>GST ({gstPercent}%)</span>
               <span style={{ fontFamily: 'Manrope', fontWeight: 600 }}>₹ {gst.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1.5px solid var(--ink-2)', borderBottom: '1.5px solid var(--ink-2)', marginTop: 4 }}>
               <strong style={{ fontSize: 14 }}>Total Order Value</strong>
-              <strong style={{ fontFamily: 'Manrope', fontSize: 16, color: 'var(--orange)' }}>₹ {(total + gst).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</strong>
+              <strong style={{ fontFamily: 'Manrope', fontSize: 16, color: 'var(--orange)' }}>₹ {grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</strong>
             </div>
           </div>
+
+          {document.notes.split('\n').filter(Boolean).length > 0 && (
+            <div style={{ fontSize: 10, color: 'var(--muted-2)', marginBottom: 12, whiteSpace: 'pre-line' }}>{document.notes}</div>
+          )}
 
           <div style={{ fontSize: 11, color: 'var(--muted-2)', marginBottom: 14 }}>
             Internal manufacturing cost, module breakdown, and margin are intentionally excluded from this document.
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" style={{ flex: 1 }}>
-              <Eye size={13} /> Preview PDF
+            <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => handlePdfAction('preview')} disabled={Boolean(pdfAction)}>
+              <Eye size={13} /> {pdfAction === 'preview' ? 'Generating...' : 'Preview PDF'}
             </button>
-            <button className="btn btn-secondary btn-sm" style={{ flex: 1 }}>
-              <Download size={13} /> Download PDF
+            <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={() => handlePdfAction('download')} disabled={Boolean(pdfAction)}>
+              <Download size={13} /> {pdfAction === 'download' ? 'Generating...' : 'Download PDF'}
             </button>
           </div>
+          {pdfError && <div role="alert" style={{ color: '#C53030', fontSize: 11, marginTop: 10 }}>{pdfError}</div>}
         </div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
         <button className="btn btn-secondary" onClick={onBack}><ArrowLeft size={15} /> Back</button>
-        <button className="btn btn-primary btn-lg" onClick={onSave}>
-          <Check size={15} /> Save & Finalize
+        <button className="btn btn-primary btn-lg" onClick={() => onSave({ ...document, doc_type: docType })} disabled={saving}>
+          <Check size={15} /> {saving ? 'Saving...' : 'Save & Finalize'}
         </button>
       </div>
+      {pdfPreviewUrl && (
+        <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closePdfPreview(); }}>
+          <div role="dialog" aria-modal="true" aria-label={`${docType} PDF preview`} style={{ background: '#fff', borderRadius: 8, width: 'min(900px, calc(100vw - 32px))', height: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>
+              <strong style={{ fontSize: 13 }}>{docType} PDF Preview</strong>
+              <button className="modal-close" aria-label="Close preview" onClick={closePdfPreview}><X size={16} /></button>
+            </div>
+            <iframe src={pdfPreviewUrl} title={`${docType} preview`} style={{ flex: 1, border: 0 }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1175,6 +1465,7 @@ export default function CostEstimator() {
   const navigate = useNavigate();
   const [step,       setStep]       = useState(0);
   const [form,       setForm]       = useState(INITIAL_FORM);
+  const [masterRates, setMasterRates] = useState(null);
   const [result,     setResult]     = useState(null);
   const [moduleResults, setModuleResults] = useState({});
   const [moduleSnapshots, setModuleSnapshots] = useState({});
@@ -1190,6 +1481,38 @@ export default function CostEstimator() {
     setToast({ msg, isErr });
     setTimeout(() => setToast(null), 3500);
   };
+
+  useEffect(() => {
+    let active = true;
+    getMasterConfig().then(({ rates }) => {
+      if (!active || !rates) return;
+      setMasterRates(rates);
+      setForm(current => {
+        const [printFirstKey, printAdditionalKey] = PRINT_RATE_KEYS[current.print_sheet_size];
+        const materialRateKey = { 'Kappa Board': 'kappa_rate_per_kg', FBB: 'fbb_rate_per_kg', 'Duplex Board': 'duplex_board_rate_per_kg' }[current.kappa_material];
+        const punchingSpeedKey = PUNCH_SPEED_KEYS[current.punching_material];
+        return {
+          ...current,
+          kappa_master_rate: rates[materialRateKey] ?? current.kappa_master_rate,
+          kappa_rate_per_kg: rates[materialRateKey] ?? current.kappa_rate_per_kg,
+          wrapper_master_rate: rates.wrapper_rate_per_kg ?? current.wrapper_master_rate,
+          wrapper_rate_per_kg: rates.wrapper_rate_per_kg ?? current.wrapper_rate_per_kg,
+          wrapper_make_ready_sheets: rates.wrapper_make_ready_sheets ?? current.wrapper_make_ready_sheets,
+          print_master_rate: rates[printFirstKey] ?? current.print_master_rate,
+          print_additional_rate: rates[printAdditionalKey] ?? current.print_additional_rate,
+          lam_master_rate: rates[`lamination_${current.lamination_type}`] ?? current.lam_master_rate,
+          glue_lines: current.glue_lines.map(line => ({ ...line, rate_per_kg: rates.glue_rate_per_kg ?? line.rate_per_kg })),
+          punching_machine_rate_per_hour: rates.punching_machine_rate_per_hour ?? current.punching_machine_rate_per_hour,
+          punching_speed: rates[punchingSpeedKey] ?? current.punching_speed,
+          punching_setup_hours: rates.punching_setup_hours ?? current.punching_setup_hours,
+          embellishment_rate_per_sq_in: rates.embellishment_rate_per_sq_in ?? current.embellishment_rate_per_sq_in,
+          embellishment_setup: rates.embellishment_setup ?? current.embellishment_setup,
+          embellishment_minimum: rates.embellishment_minimum ?? current.embellishment_minimum,
+        };
+      });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   // ── Calculate (stateless — no DB write) ────────────────
   const handleCalculate = async () => {
@@ -1295,42 +1618,28 @@ export default function CostEstimator() {
   };
 
   // ── Finalize + create quotation ─────────────────────────
-  const handleSave = async () => {
+  const handleSave = async (document) => {
     setSaving(true);
     try {
-      // 1. Persist (or re-persist) estimate
-      const saveRes = await fetch(`${API_BASE}/estimates`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, customer_name: customer, job_name: jobName }),
-      });
-      if (!saveRes.ok) throw new Error(await saveRes.text());
-      const saved = await saveRes.json();
+      const saved = await saveEstimate({ ...form, customer_name: customer, job_name: jobName });
       const eid = saved.estimate_id;
       setEstimateId(eid);
 
-      // 2. Finalize
-      await fetch(`${API_BASE}/estimates/${eid}/finalize`, { method: 'POST' });
+      await finalizeEstimate(eid);
 
-      // 3. Create quotation + PDF (best-effort)
-      await fetch(`${API_BASE}/quotations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          estimate_id:      eid,
-          doc_type:         'Quotation',
-          customer_address: '',
-          gst_percent:      18,
-          validity_days:    15,
-        }),
+      await createQuotation({
+        estimate_id: eid,
+        ...document,
+        quotation_number: document.quotation_number?.trim() || null,
+        order_quantity: Number(document.order_quantity),
+        unit_price: Number(document.unit_price),
+        gst_percent: Number(document.gst_percent),
+        validity_days: Number(document.validity_days),
       });
-
       showToast(`Estimate finalized — ${saved.estimate_number}`);
       setTimeout(() => navigate('/estimates'), 1400);
     } catch (e) {
-      // Offline — just navigate
-      showToast('Backend offline — navigating to estimates');
-      setTimeout(() => navigate('/estimates'), 1200);
+      showToast(e.message || 'Unable to save the quotation. Please try again.', true);
     } finally {
       setSaving(false);
     }
@@ -1363,13 +1672,13 @@ export default function CostEstimator() {
         <StepTechnicalData form={form} setForm={setForm} onNext={() => setStep(2)} onBack={() => setStep(0)} />
       )}
       {step === 2 && (
-        <StepCostingModules form={form} setForm={setForm} result={result} moduleResults={moduleResults} onCalculate={handleCalculate} onCalculateModule={handleCalculateModule} calculatingAll={calculatingAll} calculatingModule={calculatingModule} onNext={() => setStep(3)} onBack={() => setStep(1)} />
+        <StepCostingModules form={form} setForm={setForm} masterRates={masterRates} result={result} moduleResults={moduleResults} onCalculate={handleCalculate} onCalculateModule={handleCalculateModule} calculatingAll={calculatingAll} calculatingModule={calculatingModule} onNext={() => setStep(3)} onBack={() => setStep(1)} />
       )}
       {step === 3 && (
         <StepSummary form={form} setForm={setForm} result={result} onCalculate={handleCalculate} onNext={() => setStep(4)} onBack={() => setStep(2)} />
       )}
       {step === 4 && (
-        <StepQuotation form={form} result={result} customer={customer} jobName={jobName} onBack={() => setStep(3)} onSave={handleSave} />
+        <StepQuotation form={form} result={result} customer={customer} jobName={jobName} onBack={() => setStep(3)} onSave={handleSave} saving={saving} />
       )}
 
       {/* Toast */}

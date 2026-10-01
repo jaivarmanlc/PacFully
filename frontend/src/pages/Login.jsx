@@ -113,13 +113,13 @@ export default function Login() {
   if (isLoggedIn) return null;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: '100vh' }}>
+    <div className="login-layout" style={{ minHeight: '100vh' }}>
 
       {/* ── Left: Form ──────────────────────────────────── */}
-      <div style={{
+      <div className="login-form-panel" style={{
         display: 'flex', flexDirection: 'column',
         justifyContent: 'center', alignItems: 'center',
-        padding: '48px 64px', background: '#fff',
+        background: '#fff',
       }}>
         <div style={{ width: '100%', maxWidth: 380 }}>
 
@@ -251,7 +251,7 @@ export default function Login() {
               <button type="button" style={{
                 background: 'none', border: 'none', color: '#FF5A3A',
                 fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              }}>
+              }} onClick={() => setError('Password resets are managed by your Pacfully administrator. Contact your account administrator for help.')}>
                 Forgot password?
               </button>
             </div>
@@ -317,7 +317,7 @@ export default function Login() {
 
           <p style={{ textAlign: 'center', fontSize: 12, color: '#9CA3AF', marginTop: 24 }}>
             New to Pacfully?{' '}
-            <button style={{ background: 'none', border: 'none', color: '#FF5A3A', fontWeight: 600, cursor: 'pointer', fontSize: 12 }}>
+            <button type="button" onClick={() => window.open('https://pacfully.com/contact', '_blank', 'noopener,noreferrer')} style={{ background: 'none', border: 'none', color: '#FF5A3A', fontWeight: 600, cursor: 'pointer', fontSize: 12 }}>
               Contact Admin
             </button>
           </p>
@@ -325,9 +325,9 @@ export default function Login() {
       </div>
 
       {/* ── Right: Brand Panel ──────────────────────────── */}
-      <div style={{
+      <div className="login-brand-panel" style={{
         background: 'linear-gradient(160deg, #FF7A5C 0%, #FF5A3A 40%, #CC3C22 100%)',
-        display: 'flex', flexDirection: 'column',
+        flexDirection: 'column',
         justifyContent: 'center', alignItems: 'center',
         padding: 48, position: 'relative', overflow: 'hidden',
       }}>
