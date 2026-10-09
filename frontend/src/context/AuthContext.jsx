@@ -26,6 +26,18 @@ function loadSession() {
   return { token: null, user: null };
 }
 
+function authErrorMessage(data, fallback) {
+  const detail = data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map(item => typeof item === 'string' ? item : item?.msg)
+      .filter(Boolean);
+    if (messages.length) return messages.join('; ');
+  }
+  return fallback;
+}
+
 // ── Provider ─────────────────────────────────────────────────
 // NOTE: AuthProvider does NOT call useNavigate() here.
 // Navigation after login/logout is handled by the callers
@@ -58,7 +70,7 @@ export function AuthProvider({ children }) {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        return err.detail || 'Incorrect email or password';
+        return authErrorMessage(err, 'Incorrect email or password');
       }
 
       const data = await res.json();
@@ -89,7 +101,7 @@ export function AuthProvider({ children }) {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) return data.detail || 'Google sign-in failed';
+      if (!res.ok) return authErrorMessage(data, 'Google sign-in failed');
 
       const userObj = {
         id: data.user_id,

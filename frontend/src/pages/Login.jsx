@@ -79,6 +79,14 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!email.trim() || !password) {
+      setError('Enter your email address and password to sign in.');
+      return;
+    }
+    if (!e.currentTarget.checkValidity()) {
+      setError('Enter a valid email address.');
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -120,7 +128,7 @@ export default function Login() {
           </p>
 
           {/* Form */}
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <form noValidate onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
             {/* Error banner */}
             {error && (
@@ -137,11 +145,13 @@ export default function Login() {
 
             {/* Email */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', letterSpacing: '0.02em' }}>
+              <label htmlFor="login-email" style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', letterSpacing: '0.02em' }}>
                 Email address
               </label>
               <input
-                type="text"
+                id="login-email"
+                type="email"
+                required
                 placeholder="you@company.com"
                 value={email}
                 autoFocus
@@ -159,12 +169,14 @@ export default function Login() {
 
             {/* Password */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', letterSpacing: '0.02em' }}>
+              <label htmlFor="login-password" style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', letterSpacing: '0.02em' }}>
                 Password
               </label>
               <div style={{ position: 'relative' }}>
                 <input
+                  id="login-password"
                   type={showPass ? 'text' : 'password'}
+                  required
                   placeholder="Enter your password"
                   value={password}
                   onChange={e => { setPassword(e.target.value); setError(''); }}
