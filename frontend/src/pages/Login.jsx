@@ -152,9 +152,11 @@ export default function Login() {
                 id="login-email"
                 type="email"
                 required
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 placeholder="you@company.com"
                 value={email}
-                autoFocus
                 onChange={e => { setEmail(e.target.value); setError(''); }}
                 style={{
                   height: 40, border: '1px solid #E5E9EE', borderRadius: 7,
@@ -177,6 +179,7 @@ export default function Login() {
                   id="login-password"
                   type={showPass ? 'text' : 'password'}
                   required
+                  autoComplete="current-password"
                   placeholder="Enter your password"
                   value={password}
                   onChange={e => { setPassword(e.target.value); setError(''); }}
