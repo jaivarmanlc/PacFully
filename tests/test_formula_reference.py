@@ -176,10 +176,32 @@ def test_master_configuration_permissions_are_role_scoped():
     edit_guard = _require_config_permission("MASTER_CONFIG_EDIT")
 
     assert view_guard(SimpleNamespace(role="Estimator")).role == "Estimator"
+    assert view_guard(SimpleNamespace(role="Public")).role == "Public"
     assert edit_guard(SimpleNamespace(role="Administrator")).role == "Administrator"
     with pytest.raises(HTTPException) as error:
         edit_guard(SimpleNamespace(role="Estimator"))
     assert error.value.status_code == 403
+    with pytest.raises(HTTPException) as error:
+        edit_guard(SimpleNamespace(role="Public"))
+    assert error.value.status_code == 403
+
+
+def test_public_access_keeps_administrator_routes_protected(monkeypatch):
+    import auth
+    from app import app
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(auth, "PUBLIC_APP_ACCESS", True)
+    client = TestClient(app)
+
+    assert client.get("/api/master-config").status_code == 200
+    assert client.get("/api/formulas").status_code == 200
+    assert client.put("/api/master-config", json={"rates": {}}).status_code == 403
+    assert client.put("/api/formulas", json={"formulas": {}}).status_code == 403
+    assert client.get("/api/settings").status_code == 401
+    assert client.put("/api/settings", json={}).status_code == 401
+    assert client.get("/api/audit-log").status_code == 401
+    assert client.get("/api/auth/users").status_code == 401
 
 
 def test_configuration_versions_are_stable_and_content_sensitive():

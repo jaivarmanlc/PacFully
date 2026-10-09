@@ -5,7 +5,7 @@ import { StatusPill, money } from './components/CostCard.jsx';
 import { getEstimate } from './services/api.js';
 
 // Auth
-import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { AuthProvider, useAuth, PUBLIC_ACCESS } from './context/AuthContext.jsx';
 
 // Layout
 import Sidebar from './components/Sidebar.jsx';
@@ -38,6 +38,14 @@ function RequireAuth({ children }) {
   if (!isLoggedIn) {
     // Preserve the URL they tried to visit so we can redirect after login
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+  return children;
+}
+
+function AdministratorOnly({ children }) {
+  const { user } = useAuth();
+  if (PUBLIC_ACCESS && user?.role !== 'Administrator') {
+    return <Navigate to="/dashboard" replace />;
   }
   return children;
 }
@@ -305,8 +313,8 @@ export default function App() {
     <AuthProvider>
       <Routes>
         {/* ── Public ── */}
-        <Route path="/"      element={<PublicLayout><Home /></PublicLayout>} />
-        <Route path="/login" element={<PublicLayout><Login /></PublicLayout>} />
+        <Route path="/" element={PUBLIC_ACCESS ? <Navigate to="/dashboard" replace /> : <PublicLayout><Home /></PublicLayout>} />
+        <Route path="/login" element={PUBLIC_ACCESS ? <Navigate to="/dashboard" replace /> : <PublicLayout><Login /></PublicLayout>} />
 
         {/* ── Protected app pages ── */}
         <Route path="/dashboard"     element={<AppPage><Dashboard /></AppPage>} />
@@ -319,9 +327,9 @@ export default function App() {
         <Route path="/master-config" element={<AppPage><MasterConfig /></AppPage>} />
         <Route path="/quotations"    element={<AppPage><Quotations /></AppPage>} />
         <Route path="/proforma"      element={<AppPage><Proforma /></AppPage>} />
-        <Route path="/settings"      element={<AppPage><Settings /></AppPage>} />
-        <Route path="/users"         element={<AppPage><Users /></AppPage>} />
-        <Route path="/audit-log"     element={<AppPage><AuditLog /></AppPage>} />
+        <Route path="/settings"      element={<AppPage><AdministratorOnly><Settings /></AdministratorOnly></AppPage>} />
+        <Route path="/users"         element={<AppPage><AdministratorOnly><Users /></AdministratorOnly></AppPage>} />
+        <Route path="/audit-log"     element={<AppPage><AdministratorOnly><AuditLog /></AdministratorOnly></AppPage>} />
         <Route path="/formulas"      element={<AppPage><FormulaConfig /></AppPage>} />
 
         {/* ── Catch-all ── */}

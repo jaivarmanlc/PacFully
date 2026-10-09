@@ -14,10 +14,20 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+export const PUBLIC_ACCESS = import.meta.env.PROD;
+const PUBLIC_USER = { id: 'public', full_name: 'Public Visitor', email: '', role: 'Public' };
 
 const AuthContext = createContext(null);
 
 function loadSession() {
+  if (PUBLIC_ACCESS) {
+    try {
+      localStorage.removeItem('pac_token');
+      localStorage.removeItem('pac_user');
+      localStorage.removeItem('pac_testing_session');
+    } catch {}
+    return { token: null, user: PUBLIC_USER };
+  }
   try {
     const token = localStorage.getItem('pac_token');
     const raw   = localStorage.getItem('pac_user');
@@ -135,7 +145,8 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     token,
-    isLoggedIn: !!token && !!user,
+    isLoggedIn: PUBLIC_ACCESS || (!!token && !!user),
+    publicAccess: PUBLIC_ACCESS,
     initials,
     login,
     loginWithGoogle,

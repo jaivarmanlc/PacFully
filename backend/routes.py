@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
-from auth import get_formula_user
+from auth import get_formula_user, require_admin
 from ai.layout_reader import extract_pdf_layout
 from component_process import (
     PROCESS_TO_MODULE,
@@ -37,6 +37,7 @@ MASTER_CONFIG_PERMISSIONS = {
     "Administrator": {"MASTER_CONFIG_VIEW", "MASTER_CONFIG_EDIT"},
     "Estimator": {"MASTER_CONFIG_VIEW"},
     "Viewer": {"MASTER_CONFIG_VIEW"},
+    "Public": {"MASTER_CONFIG_VIEW"},
 }
 
 def _configuration_version(value):
@@ -999,12 +1000,12 @@ def update_formula_config(body: FormulaConfigUpdate, db: Session = Depends(get_d
     return {"formulas": formulas, "version": _configuration_version(formulas), "message": "Formulas saved and applied to future calculations"}
 
 @router.get("/settings")
-def get_system_settings(db: Session = Depends(get_db)):
+def get_system_settings(db: Session = Depends(get_db), current=Depends(require_admin)):
     record = db.query(SystemSettings).filter(SystemSettings.id == 1).first()
     return {"settings": {**SYSTEM_SETTING_DEFAULTS, **(record.settings if record else {})}}
 
 @router.put("/settings")
-def update_system_settings(body: SystemSettingsUpdate, db: Session = Depends(get_db)):
+def update_system_settings(body: SystemSettingsUpdate, db: Session = Depends(get_db), current=Depends(require_admin)):
     record = db.query(SystemSettings).filter(SystemSettings.id == 1).first()
     previous = {**SYSTEM_SETTING_DEFAULTS, **(record.settings if record else {})}
     settings = body.model_dump()
@@ -1016,7 +1017,7 @@ def update_system_settings(body: SystemSettingsUpdate, db: Session = Depends(get
     _audit(
         db, "System Settings Updated", "config", "system-settings",
         detail="Company, tax, and document numbering settings updated",
-        old_val=json.dumps(previous), new_val=json.dumps(settings), user="Admin",
+        old_val=json.dumps(previous), new_val=json.dumps(settings), user=current.full_name,
     )
     db.commit()
     return {"settings": settings, "message": "Settings saved"}
@@ -1700,7 +1701,7 @@ def delete_quotation(quotation_id: int, db: Session = Depends(get_db)):
 # ═══════════════════════════════════════════════════════════════
 
 @router.get("/audit-log")
-def get_audit_log(db: Session = Depends(get_db)):
+def get_audit_log(db: Session = Depends(get_db), current=Depends(require_admin)):
     rows = db.query(AuditEvent).order_by(AuditEvent.timestamp.desc()).limit(500).all()
     return [
         {

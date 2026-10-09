@@ -31,6 +31,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 # ── Config ────────────────────────────────────────────────────
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+PUBLIC_APP_ACCESS = os.getenv("PUBLIC_APP_ACCESS", "false").strip().lower() in {"1", "true", "yes", "on"}
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     if ENVIRONMENT == "production":
@@ -48,7 +49,7 @@ ALGORITHM      = "HS256"
 TOKEN_EXPIRE_H = 24
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
-oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -77,13 +78,15 @@ def decode_token(token: str) -> dict:
 
 # ── FastAPI dependencies ──────────────────────────────────────
 
-def get_current_user(token: str = Depends(oauth2), db: Session = Depends(get_db)) -> User:
+def get_current_user(token: Optional[str] = Depends(oauth2), db: Session = Depends(get_db)) -> User:
     """Validates JWT and returns the User row. Raises 401 on failure."""
     cred_err = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        raise cred_err
     try:
         payload = decode_token(token)
         user_id = payload.get("sub")
@@ -104,9 +107,11 @@ def require_admin(current: User = Depends(get_current_user)) -> User:
 
 def get_formula_user(
     request: Request,
-    token: str = Depends(oauth2),
+    token: Optional[str] = Depends(oauth2),
     db: Session = Depends(get_db),
 ):
+    if PUBLIC_APP_ACCESS and not token:
+        return SimpleNamespace(full_name="Public Visitor", role="Public")
     if (
         ENVIRONMENT == "development"
         and token == "testing-session"

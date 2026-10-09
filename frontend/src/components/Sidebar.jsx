@@ -30,7 +30,7 @@ const NAV_ADMIN = [
 export default function Sidebar({ open = false, onClose }) {
   const location                   = useLocation();
   const navigate                   = useNavigate();
-  const { user, initials, logout } = useAuth();
+  const { user, initials, logout, publicAccess } = useAuth();
 
   const handleLogout = () => {
     logout();
@@ -73,19 +73,20 @@ export default function Sidebar({ open = false, onClose }) {
           </NavLink>
         ))}
 
-        <span className="sidebar-section-label" style={{ marginTop: 8 }}>Administration</span>
-
-        {NAV_ADMIN.map(({ label, icon: Icon, to }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={() => `nav-item ${isActive(to) ? 'active' : ''}`}
-            onClick={onClose}
-          >
-            <Icon size={16} className="nav-icon" />
-            <span>{label}</span>
-          </NavLink>
-        ))}
+        {!publicAccess && <>
+          <span className="sidebar-section-label" style={{ marginTop: 8 }}>Administration</span>
+          {NAV_ADMIN.map(({ label, icon: Icon, to }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={() => `nav-item ${isActive(to) ? 'active' : ''}`}
+              onClick={onClose}
+            >
+              <Icon size={16} className="nav-icon" />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+        </>}
       </nav>
 
       {/* Bottom: user chip + logout */}
@@ -135,7 +136,7 @@ export default function Sidebar({ open = false, onClose }) {
             </div>
 
             {/* Logout button */}
-            <button
+            {!publicAccess && <button
               onClick={handleLogout}
               title="Sign out"
               style={{
@@ -148,7 +149,7 @@ export default function Sidebar({ open = false, onClose }) {
               onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted-2)'; e.currentTarget.style.background = 'none'; }}
             >
               <LogOut size={15} />
-            </button>
+            </button>}
           </div>
         </div>
       </div>
