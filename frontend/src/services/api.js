@@ -21,6 +21,9 @@ async function request(method, path, body, responseType = 'json') {
   const res = await fetch(`${BASE}${path}`, opts);
 
   if (res.status === 401) {
+    if (localStorage.getItem('pac_testing_session') === 'true') {
+      throw new Error('Backend authorization is unavailable in testing mode');
+    }
     // Token expired or invalid — clear session and reload to /login
     localStorage.removeItem('pac_token');
     localStorage.removeItem('pac_user');
@@ -47,6 +50,21 @@ const del  = (path)       => request('DELETE', path);
 // ── Health ─────────────────────────────────────────────────
 export const checkHealth = () => get('/health');
 
+export const extractLayout = async file => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${BASE}/layout/extract`, { method: 'POST', headers, body: formData });
+  if (!response.ok) {
+    let message = `Unable to extract layout (${response.status})`;
+    try { message = (await response.json()).detail || message; } catch {}
+    throw new Error(message);
+  }
+  return response.json();
+};
+
 // ── Costing engine (stateless) ──────────────────────────────
 export const calculateEstimate = (payload) => post('/estimates/calculate', payload);
 
@@ -66,6 +84,8 @@ export const deleteCustomer = (id)  => del(`/customers/${id}`);
 // ── Master configuration ───────────────────────────────────
 export const getMasterConfig = () => get('/master-config');
 export const saveMasterConfig = (rates) => put('/master-config', { rates });
+export const getFormulaConfig = () => get('/formulas');
+export const saveFormulaConfig = (formulas) => put('/formulas', { formulas });
 export const getSystemSettings = () => get('/settings');
 export const saveSystemSettings = (settings) => put('/settings', settings);
 

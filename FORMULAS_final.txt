@@ -8,6 +8,10 @@ It is a human-readable reference, not a runtime configuration file. Changing a
 formula here does not change the application; update the implementation noted
 under "Code locations" as well.
 
+These formulas should be in Master Configuration sheet where I can alter it later, Each module picks Formula from
+here for costing  - This has separate level of access to alter and view
+
+
 Notation
 --------
 QTY       = order quantity
@@ -19,8 +23,8 @@ Rate      = configured rate for the material or process
 1. KAPPA BOARD
 --------------
 Effective GSM = GSM at 1 mm x Thickness (mm)
-Sheet Area (m^2) = Sheet Length (mm) x Sheet Width (mm) / 1,000,000
-KG / Sheet = Sheet Area (m^2) x Effective GSM / 1,000
+Sheet Area = Sheet Length (inch) x Sheet Width (inch) * 0.00064516
+KG / Sheet = Sheet Area  x Effective GSM / 1,000
 Base Sheets = CEILING(QTY / UPS)
 Wastage Sheets = CEILING(Base Sheets x Wastage Percent / 100)
 Final Sheets = Base Sheets + Wastage Sheets
@@ -34,7 +38,7 @@ total cost and cost per box use the same underlying KG / Sheet and rate values.
 
 Current example:
   Effective GSM = 1,200 x 1.8 = 2,160
-  Sheet Area = 1,000 x 700 / 1,000,000 = 0.7000 m^2
+  Sheet Area = 39.37 x 27.56 *0.00064516 = 0.7000 
   KG / Sheet = 0.7000 x 2,160 / 1,000 = 1.5120 kg
   Base Sheets = CEILING(1,000 / 2) = 500
   Wastage Sheets = CEILING(500 x 10 / 100) = 50
@@ -47,6 +51,9 @@ Current example:
 
 2. WRAPPER
 ----------
+Effective GSM = From Material type (Layout)
+Sheet Area = Sheet Length (inch) x Sheet Width (inch) * 0.00064516
+KG / Sheet = Sheet Area  x Effective GSM / 1,000
 Base Sheets = CEILING(QTY / UPS)
 Wastage Sheets = CEILING(Base Sheets x Wastage Percent / 100)
 Final Sheets = Base Sheets + Wastage Sheets + Make-ready Sheets
@@ -54,6 +61,20 @@ KG / Sheet = Sheet Length (mm) x Sheet Width (mm) x GSM / 1,000,000,000
 Total KG = Final Sheets x KG / Sheet
 Total Cost = Total KG x Rate / KG
 Cost / Box = Total Cost / QTY
+
+
+
+
+2. Inserts =
+----------
+
+For FBB, Duplex, Kappa insert calculation is same formula as Base material
+
+
+For EVA and EPE PU
+EVA cost is  750 for 10 mm()
+Based on eVA thickness you can calculate cost
+
 
 
 3. PRINTING
@@ -71,6 +92,18 @@ Default rates by sheet size:
   20x28: first INR 3,500; additional INR 0.50 per sheet
   28x40: first INR 6,500; additional INR 0.80 per sheet
 Unknown sheet sizes use the 28x40 rate.
+
+
+DRIP OFF + Spot UV:
+-------------
+Cost / Sheet = Sheet Length (in) x Sheet Width (in)
+              x Rate per 100 sq.in / 100
+Total Cost = Cost / Sheet x Wrapper Final Sheets
+
+Default rate per 100 sq.in:
+  Thermal = INR 0.95
+
+
 
 
 4. LAMINATION
@@ -95,6 +128,8 @@ For each glue component:
 
 Total Glue Cost = Sum of Component Costs for all glue components
 
+Glue KG per box = 155
+
 
 6. PUNCHING
 -----------
@@ -112,11 +147,22 @@ Default speed and setup time:
   Foam/EVA/EPE:500 sheets/hour, 0.5 setup hours
 Unknown materials use the Kappa settings.
 
+Machine Rate per Hour = 400 rs
 
 7. EMBELLISHMENTS
 -----------------
-Raw Cost = Area (sq.in) x Rate per sq.in + Setup Cost
-Total Cost = Maximum(Raw Cost, Minimum Cost)
+Raw Cost = Area (sq.in) x Rate per 100 sq .in/100 
+Total Cost/box = Maximum(Raw Cost, Minimum Cost)
+
+Die cost to be given in separate module
+
+Rate per 100 square inch 
+- 0.9 for Drip off
+- 3 for Gold foiling
+- Spot UV - 1rs 
+
+
+Embossing and debossing direct cost of 1 rs / box
 
 
 8. ACCESSORIES
@@ -127,13 +173,80 @@ Total Accessories Cost = Sum of Accessory Costs
 
 9. CONVERSION
 -------------
-Current calculation scaffold:
-  Total Cost = Machine Rate x Machine Hours
-               + Labour Rate x Labour Hours
-               + Setup Cost
+Dropdown to select conversion type 
 
-The module is marked CONFIGURATION REQUIRED in the application. Confirm the
-business formula before treating this output as a configured costing result.
+
+For Kappa base material By default Semi automatic should be considered
+
+Semi Automatic:
+
+Current calculation :
+
+if Base material is KAPPA:
+
+No of boxes converted per hour= 400 box   - variable
+
+Machine hours = (total qty / No of boxes converted per hour) x 2
+
+Labour rate / hr = 1*(15000(variable)/25 days/8hrs)
+No labour is = 15 default (variable)
+
+
+  Total Cost = (No labour  x Labour rate / hr x Machine Hours)/ Order qty
+              
+   
+
+if base material FBB, Duplex , Kraft (By default)
+
+Side pasting : 0.4 / box Variable
+
+
+
+Automatic:
+
+If base Material is KAPPA
+
+Master Config:
+
+No of boxes converted per hour= 600 box   - variable
+875 rs / hr 
+set up cost 645 rs / hr 
+
+Setup time is 4 hrs Default
+
+Machine hours = ((total qty / No of boxes converted per hour) x 2) 
+Cost/ box = ((Machine hours * 875 )+ (Setup time *2 * 645))/ Order qty
+
+
+
+
+Contract: (If conversion is Contract)
+
+Rate per box  = 3 - (Variable)
+Directly added to cost/box
+
+
+9. One time tooling Cost:
+------------------------
+Constant values uploaded in Master sheet, should be fetched from there to this module based on the area
+
+Punching Die - 
+Based on Sheet size rate
+15x 20 - 1500
+20 x 28 -3000
+25X36 - 4000
+28x40-4000
+
+For exacrt sheet six=ze take master data value 
+Some times we cut sheets in half like 20x 28 into 20x14 so youc ould take the nearest punching cost of 15x 20
+
+Based on the sheet size take the nearest Die cost
+
+
+
+Emboss/Deboss Die -  per sq cm 5 rs
+Foil stamp Die - per sq cm 5 rs
+
 
 
 10. EB

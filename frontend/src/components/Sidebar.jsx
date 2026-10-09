@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Calculator, ClipboardList, Users, BarChart3,
   Settings2, FileText, Receipt, HelpCircle,
-  Shield, BookOpen, LogOut,
+  Shield, BookOpen, Sigma, LogOut,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -16,6 +16,7 @@ const NAV_MAIN = [
   { label: 'Customers',           icon: Users,           to: '/customers'    },
   { label: 'Reports',             icon: BarChart3,       to: '/reports'      },
   { label: 'Master Configuration',icon: Settings2,       to: '/master-config'},
+  { label: 'Formulas',            icon: Sigma,           to: '/formulas'     },
   { label: 'Quotations',          icon: FileText,        to: '/quotations'   },
   { label: 'Proforma',            icon: Receipt,         to: '/proforma'     },
 ];

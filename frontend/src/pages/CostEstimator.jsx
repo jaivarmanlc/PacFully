@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo.jsx';
 import {
   Upload, FileText, ChevronDown, Plus, Save, ArrowRight, ArrowLeft,
   CheckCircle2, AlertCircle, RotateCcw, Edit3, Eye, Download,
-  Cpu, Layers, Printer, Droplets, Scissors, Sparkles,
+  Cpu, Calculator, Layers, Printer, Droplets, Scissors, Sparkles,
   Package, Zap, Box, X, Check, Info
 } from 'lucide-react';
 import {
@@ -12,37 +12,31 @@ import {
   PieChart, Pie, Cell
 } from 'recharts';
 import { Stepper, RateConfigRow, CalcTracePanel, money } from '../components/CostCard';
-import { listCustomers, createCustomer, getMasterConfig, getNextQuotationNumber, previewQuotationPdf, saveEstimate, finalizeEstimate, createQuotation } from '../services/api';
+import ComponentProcessMatrix, { componentsForModule } from '../components/ComponentProcessMatrix.jsx';
+import ComponentProcessInputs from '../components/ComponentProcessInputs.jsx';
+import { listCustomers, createCustomer, getMasterConfig, getNextQuotationNumber, previewQuotationPdf, saveEstimate, finalizeEstimate, createQuotation, extractLayout } from '../services/api';
 
 // ── Constants ─────────────────────────────────────────────
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-const STEPS = ['Layout & AI Extraction', 'Technical Data', 'Costing Modules', 'Summary & Margin', 'Quotation / Proforma'];
+const STEPS = ['Layout & Component Extraction', 'Technical Data', 'Costing Modules', 'Summary & Margin', 'Quotation / Proforma'];
+const MM_PER_INCH = 25.4;
 
-const MODULE_TABS = ['Kappa', 'Wrapper', 'Printing', 'Lamination', 'Glue', 'Punching', 'Embellishments', 'Accessories', 'Conversion'];
+const mmToInches = value => Number(value) / MM_PER_INCH;
+const inchesToMm = value => Number(value) * MM_PER_INCH;
 
-const AI_FIELDS = [
-  { label: 'Finished Size (L × W)', value: '320 × 120 × 80 mm', confidence: 98, status: 'Confirmed' },
-  { label: 'Material', value: 'Kappa Board', confidence: 92, status: 'Confirmed' },
-  { label: 'GSM', value: '1200 GSM', confidence: 88, status: 'Confirmed' },
-  { label: 'Thickness', value: '1.8 mm', confidence: 85, status: 'Confirmed' },
-  { label: 'Structure Type', value: 'Rigid Box', confidence: 96, status: 'Confirmed' },
-  { label: 'Order Quantity', value: '1,000 boxes', confidence: 90, status: 'Confirmation Required' },
-  { label: 'Printing', value: '4-Color (CMYK)', confidence: 94, status: 'Confirmed' },
-  { label: 'Lamination', value: 'Matte Lamination', confidence: 91, status: 'Confirmed' },
-  { label: 'Glue Area', value: 'Full Surface', confidence: 80, status: 'Confirmed' },
-  { label: 'Punching', value: 'Standard', confidence: 93, status: 'Confirmed' },
-  { label: 'Embellishments', value: 'Gold Foil', confidence: 76, status: 'Confirmation Required' },
-  { label: 'Inserts', value: 'EVA Insert', confidence: 87, status: 'Confirmed' },
-];
+const MODULE_TABS = ['Kappa', 'Wrapper', 'Insert', 'Printing', 'Lamination', 'Glue', 'Punching', 'Embellishments', 'Accessories', 'Conversion', 'One Time Cost'];
 
 const INITIAL_FORM = {
   quantity: 1000, margin_percent: 20,
+  components: [],
+  layout_extraction: {},
   kappa_material: 'Kappa Board', kappa_thickness_mm: 1.8, kappa_gsm_at_1mm: 1200, kappa_sheet_length_mm: 1000, kappa_sheet_width_mm: 700, kappa_ups: 2, kappa_wastage_percent: 10, kappa_rate_per_kg: 80,
+  fbb_rate_per_kg: 88, duplex_board_rate_per_kg: 72,
   kappa_master_rate: 80, kappa_override_rate: null,
   wrapper_gsm: 128, wrapper_ups: 1, wrapper_sheet_length_mm: 1000, wrapper_sheet_width_mm: 700, wrapper_wastage_percent: 10, wrapper_make_ready_sheets: 150, wrapper_rate_per_kg: 95,
   wrapper_master_rate: 95, wrapper_override_rate: null,
-  print_sheet_size: '28x40', print_master_rate: 6500, print_additional_rate: 0.8, print_override_rate: null,
-  lamination_type: 'thermal', lamination_sheet_length_in: 28, lamination_sheet_width_in: 40,
+  print_method: 'Offset', print_colour_configuration: '4-Color CMYK', print_sheet_size: '28x40', print_master_rate: 6500, print_additional_rate: 0.8, print_override_rate: null,
+  lamination_type: 'thermal', lamination_finish: 'Matte', lamination_method_finish_rates: {}, lamination_sheet_length_in: 28, lamination_sheet_width_in: 40,
   lam_master_rate: 1.10, lam_override_rate: null,
   glue_lines: [
     { name: 'Top Wrapper', area_sq_in: 620, gsm: 20, rate_per_kg: 90 },
@@ -50,11 +44,20 @@ const INITIAL_FORM = {
   ],
   punching_material: 'Kappa', punching_machine_rate_per_hour: 400, punching_speed: 400, punching_setup_hours: 0.5,
   embellishment_area_sq_in: 24, embellishment_rate_per_sq_in: 2.5, embellishment_setup: 800, embellishment_minimum: 1000, embellishment_type: 'Gold Foil',
+  foiling_rate_per_100_sq_in: 3, spot_uv_rate_per_100_sq_in: 1, drip_off_rate_per_100_sq_in: null,
+  embossing_cost_per_box: 1, debossing_cost_per_box: 1,
+  punching_die_15x20: 1500, punching_die_20x28: 3000, punching_die_25x36: 4000, punching_die_28x40: 4000,
+  emboss_deboss_die_rate_per_sq_cm: 5, foil_stamp_die_rate_per_sq_cm: 5,
   accessories: [
     { name: 'Magnet Snap', quantity_per_box: 1, unit_cost: 3.5 },
     { name: 'Ribbon', quantity_per_box: 1, unit_cost: 1.2 },
   ],
   conversion_machine_rate: 0, conversion_machine_hours: 0, conversion_labour_rate: 0, conversion_labour_hours: 0, conversion_setup: 0,
+  conversion_type: 'Semi Automatic', conversion_semi_boxes_per_hour: 400, conversion_semi_workers: 15,
+  conversion_monthly_salary: 15000, conversion_working_days: 25, conversion_hours_per_day: 8,
+  conversion_side_pasting_rate_per_box: 0.4, conversion_automatic_boxes_per_hour: 600,
+  conversion_automatic_machine_rate: 875, conversion_automatic_setup_rate: 645,
+  conversion_automatic_setup_hours: 4, conversion_contract_rate_per_box: 3,
   eb_method: 'box', eb_value: 0,
 };
 
@@ -72,6 +75,7 @@ function moduleInputs(module, form, wrapperFinalSheets) {
   const quantity = form.quantity;
   switch (module) {
     case 'Kappa':
+    case 'Insert':
       return {
         quantity,
         kappa_thickness_mm: form.kappa_thickness_mm,
@@ -81,6 +85,8 @@ function moduleInputs(module, form, wrapperFinalSheets) {
         kappa_ups: form.kappa_ups,
         kappa_wastage_percent: form.kappa_wastage_percent,
         kappa_rate_per_kg: form.kappa_override_rate ?? form.kappa_master_rate,
+        fbb_rate_per_kg: form.fbb_rate_per_kg,
+        duplex_board_rate_per_kg: form.duplex_board_rate_per_kg,
         kappa_master_rate: form.kappa_master_rate,
         kappa_override_rate: form.kappa_override_rate,
       };
@@ -100,6 +106,7 @@ function moduleInputs(module, form, wrapperFinalSheets) {
     case 'Printing':
       return {
         quantity, wrapper_final_sheets: wrapperFinalSheets, print_sheet_size: form.print_sheet_size,
+        print_method: form.print_method, print_colour_configuration: form.print_colour_configuration,
         print_master_rate: form.print_master_rate, print_additional_rate: form.print_additional_rate,
         print_override_rate: form.print_override_rate,
       };
@@ -107,6 +114,8 @@ function moduleInputs(module, form, wrapperFinalSheets) {
       return {
         quantity, wrapper_final_sheets: wrapperFinalSheets,
         lamination_type: form.lamination_type,
+        lamination_finish: form.lamination_finish,
+        lamination_method_finish_rates: form.lamination_method_finish_rates,
         lamination_sheet_length_in: form.lamination_sheet_length_in,
         lamination_sheet_width_in: form.lamination_sheet_width_in,
         lam_master_rate: form.lam_master_rate,
@@ -129,37 +138,104 @@ function moduleInputs(module, form, wrapperFinalSheets) {
         embellishment_rate_per_sq_in: form.embellishment_rate_per_sq_in,
         embellishment_setup: form.embellishment_setup,
         embellishment_minimum: form.embellishment_minimum,
+        lamination_sheet_length_in: form.lamination_sheet_length_in,
+        lamination_sheet_width_in: form.lamination_sheet_width_in,
+        foiling_rate_per_100_sq_in: form.foiling_rate_per_100_sq_in,
+        spot_uv_rate_per_100_sq_in: form.spot_uv_rate_per_100_sq_in,
+        drip_off_rate_per_100_sq_in: form.drip_off_rate_per_100_sq_in,
+        embossing_cost_per_box: form.embossing_cost_per_box,
+        debossing_cost_per_box: form.debossing_cost_per_box,
       };
     case 'Accessories':
       return { quantity, accessories: form.accessories };
+    case 'Conversion':
+      return {
+        quantity,
+        conversion_type: form.conversion_type,
+        conversion_semi_boxes_per_hour: form.conversion_semi_boxes_per_hour,
+        conversion_semi_workers: form.conversion_semi_workers,
+        conversion_monthly_salary: form.conversion_monthly_salary,
+        conversion_working_days: form.conversion_working_days,
+        conversion_hours_per_day: form.conversion_hours_per_day,
+        conversion_side_pasting_rate_per_box: form.conversion_side_pasting_rate_per_box,
+        conversion_automatic_boxes_per_hour: form.conversion_automatic_boxes_per_hour,
+        conversion_automatic_machine_rate: form.conversion_automatic_machine_rate,
+        conversion_automatic_setup_rate: form.conversion_automatic_setup_rate,
+        conversion_automatic_setup_hours: form.conversion_automatic_setup_hours,
+        conversion_contract_rate_per_box: form.conversion_contract_rate_per_box,
+      };
+    case 'One Time Cost':
+      return {
+        quantity,
+        punching_die_15x20: form.punching_die_15x20,
+        punching_die_20x28: form.punching_die_20x28,
+        punching_die_25x36: form.punching_die_25x36,
+        punching_die_28x40: form.punching_die_28x40,
+        emboss_deboss_die_rate_per_sq_cm: form.emboss_deboss_die_rate_per_sq_cm,
+        foil_stamp_die_rate_per_sq_cm: form.foil_stamp_die_rate_per_sq_cm,
+      };
     default:
       return {};
   }
 }
 
 // ── Field Component ────────────────────────────────────────
-function Field({ label, value, onChange, type = 'number', options, readOnly }) {
+function Field({ label, value, onChange, type = 'number', options, readOnly, preserveInput = false, step, onBlur }) {
   return (
     <div className="form-group">
       <label className="form-label">{label}</label>
       {options ? (
         <select className="form-select" value={value} onChange={e => onChange?.(e.target.value)} disabled={readOnly}>
-          {options.map(o => <option key={o}>{o}</option>)}
+          {options.map(option => {
+            const optionValue = typeof option === 'string' ? option : option.value;
+            const optionLabel = typeof option === 'string' ? option : option.label;
+            return <option key={optionValue} value={optionValue}>{optionLabel}</option>;
+          })}
         </select>
       ) : (
         <input
           className="form-input"
           type={type}
+          step={step}
           value={value}
           readOnly={readOnly}
-          onChange={e => onChange?.(type === 'number' ? Number(e.target.value) : e.target.value)}
+          onChange={e => onChange?.(preserveInput ? e.target.value : type === 'number' && e.target.value !== '' ? Number(e.target.value) : e.target.value)}
+          onBlur={onBlur}
         />
       )}
     </div>
   );
 }
 
-// ── Step 1: Layout Upload + AI Extraction ─────────────────
+function SheetDimensionField({ label, valueMm, onChange }) {
+  const [valueIn, setValueIn] = useState(() => valueMm === '' ? '' : mmToInches(valueMm).toFixed(2));
+  const isDirty = useRef(false);
+
+  useEffect(() => {
+    isDirty.current = false;
+    setValueIn(valueMm === '' ? '' : mmToInches(valueMm).toFixed(2));
+  }, [valueMm]);
+
+  return (
+    <Field
+      label={label}
+      value={valueIn}
+      preserveInput
+      step="any"
+      onChange={value => {
+        isDirty.current = true;
+        setValueIn(value);
+      }}
+      onBlur={() => {
+        if (!isDirty.current) return;
+        isDirty.current = false;
+        onChange(valueIn === '' ? '' : inchesToMm(valueIn));
+      }}
+    />
+  );
+}
+
+// ── Step 1: Layout Upload + Component Extraction ─────────
 const DEMO_CUSTOMERS = [
   { name: 'Luxe Beauty Pvt Ltd' },
   { name: 'Aura Skincare' },
@@ -236,7 +312,7 @@ function AddCustomerModal({ onClose, onSaved }) {
   );
 }
 
-function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
+function StepLayout({ onNext, customer, setCustomer, jobName, setJobName, components, onComponentsChange, onExtractionData }) {
   const [file, setFile] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [extracted, setExtracted] = useState(false);
@@ -244,6 +320,8 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
   const [customers, setCustomers] = useState(DEMO_CUSTOMERS);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
+  const [extractionNotice, setExtractionNotice] = useState('');
+  const [layoutData, setLayoutData] = useState(null);
   const previewRef = useRef(null);
   const fileRef = useRef();
 
@@ -264,20 +342,35 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
     setShowAddCustomer(false);
   };
 
-  const handleFile = (f) => {
+  const handleFile = async (f) => {
     if (!f) return;
+    if (f.size > 20 * 1024 * 1024) {
+      setExtractionNotice('Layout file exceeds the 20 MB limit.');
+      return;
+    }
     setFile(f);
     setExtracting(true);
-    setProgress(0);
-    const steps = [20, 45, 65, 82, 95, 100];
-    let i = 0;
-    const tick = setInterval(() => {
-      setProgress(steps[i++]);
-      if (i >= steps.length) {
-        clearInterval(tick);
-        setTimeout(() => { setExtracting(false); setExtracted(true); }, 400);
+    setProgress(10);
+    setExtractionNotice('');
+    setLayoutData(null);
+    onComponentsChange([]);
+    onExtractionData?.(null);
+    try {
+      if (f.name.toLowerCase().endsWith('.pdf')) {
+        const extractedLayout = await extractLayout(f);
+        onComponentsChange(extractedLayout.components || []);
+        setLayoutData(extractedLayout);
+        onExtractionData?.(extractedLayout);
+        setExtractionNotice(extractedLayout.message || 'Layout text extraction complete. Review all process values.');
+      } else {
+        setExtractionNotice('Image uploads are supported for review, but automatic text and process extraction currently requires a PDF. Add components and confirm process values manually.');
       }
-    }, 500);
+    } catch (error) {
+      setExtractionNotice(`${error.message || 'Unable to extract layout'}. Add components and confirm process values manually.`);
+    }
+    setProgress(100);
+    setExtracting(false);
+    setExtracted(true);
   };
 
   const handleDownloadPreview = () => {
@@ -293,11 +386,11 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
   };
 
   const progressSteps = [
-    'Reading layout file',
-    'Detecting dimensions',
-    'Identifying materials',
-    'Analysing structure',
-    'Extraction complete',
+    'Reading PDF text and field positions',
+    'Checking vector and raster layout geometry',
+    'Using OCR only where native text is unavailable',
+    'Normalizing values and process routes',
+    'Reviewing extracted fields',
   ];
   const doneCount = Math.floor((progress / 100) * progressSteps.length);
 
@@ -329,7 +422,7 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
             <div className="panel-header">
               <div>
                 <div className="panel-title">Upload Packaging Layout</div>
-                <div className="panel-sub">PDF, PNG, JPG or JPEG · AI extraction ready</div>
+                <div className="panel-sub">PDF text and drawings are extracted automatically; scanned PDFs use OCR and require review.</div>
               </div>
             </div>
 
@@ -362,7 +455,7 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
                       {(file.size / 1024).toFixed(0)} KB
                     </div>
                   </div>
-                  <span className="pill pill-orange" style={{ fontSize: 10 }}>Layout analysed</span>
+                  <span className="pill pill-orange" style={{ fontSize: 10 }}>Layout selected</span>
                 </div>
 
                 {/* Dieline preview */}
@@ -375,19 +468,15 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
                       <rect x="40" y="100" width="140" height="30" fill="#FFE8E2" stroke="#FF7A5C" strokeWidth="1" rx="1" />
                       <rect x="0" y="30" width="40" height="70" fill="#FFF8F5" stroke="#FF7A5C" strokeWidth="1" rx="1" />
                       <rect x="180" y="30" width="40" height="70" fill="#FFF8F5" stroke="#FF7A5C" strokeWidth="1" rx="1" />
-                      <text x="110" y="68" textAnchor="middle" fontSize="10" fill="#FF5A3A" fontFamily="Manrope" fontWeight="600">220 mm</text>
-                      <text x="8" y="68" textAnchor="middle" fontSize="9" fill="#FF7A5C" transform="rotate(-90,8,68)">80mm</text>
                     </svg>
                     <div style={{ position: 'absolute', top: -8, right: -8, background: '#3D9D62', color: '#fff', borderRadius: 6, padding: '3px 8px', fontSize: 10, fontWeight: 700 }}>
-                      AI Detected
+                      Layout Preview
                     </div>
                   </div>
                   <div style={{ maxWidth: 160 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8 }}>Rigid Box · Luxury</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8 }}>Illustrative layout preview</div>
                     <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.8 }}>
-                      <div>L: <strong>320 mm</strong></div>
-                      <div>W: <strong>120 mm</strong></div>
-                      <div>H: <strong>80 mm</strong></div>
+                      <div>Dimensions are not extracted from this preview.</div>
                     </div>
                   </div>
                 </div>
@@ -395,7 +484,7 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
                 {extracting && (
                   <div style={{ marginTop: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>AI Extraction Progress</div>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>PDF Extraction Progress</div>
                     </div>
                     <div className="bar-track" style={{ height: 6, marginBottom: 12 }}>
                       <div className="bar-fill" style={{ width: `${progress}%`, transition: 'width 0.5s' }} />
@@ -419,10 +508,10 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
           <div className="panel" style={{ height: 'fit-content' }}>
             <div className="panel-title" style={{ marginBottom: 14 }}>Supported formats</div>
             {[
-              { fmt: 'PDF', desc: 'Vector dieline files', icon: '📄' },
-              { fmt: 'PNG', desc: 'High-res layout images', icon: '🖼' },
-              { fmt: 'JPG', desc: 'Scanned layouts', icon: '📷' },
-              { fmt: 'JPEG', desc: 'Compressed images', icon: '📷' },
+              { fmt: 'PDF', desc: 'Text, drawing dimensions and scanned-page OCR', icon: '📄' },
+              { fmt: 'PNG', desc: 'Manual component/process review', icon: '🖼' },
+              { fmt: 'JPG', desc: 'Manual component/process review', icon: '📷' },
+              { fmt: 'JPEG', desc: 'Manual component/process review', icon: '📷' },
             ].map(f => (
               <div key={f.fmt} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--line-2)' }}>
                 <span style={{ fontSize: 16 }}>{f.icon}</span>
@@ -444,12 +533,12 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: '#E8F8ED', borderRadius: 8 }}>
               <CheckCircle2 size={18} color="#3D9D62" />
               <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: '#2D6A4F' }}>
-                {file.name} — Layout analysed successfully
+                {file.name} — Layout file ready for review
               </div>
-              <span className="pill pill-confirmed" style={{ fontSize: 10 }}>98% Confidence</span>
+              <span className="pill pill-confirmed" style={{ fontSize: 10 }}>Review required</span>
             </div>
 
-            <div className="panel-title" style={{ marginBottom: 12 }}>AI Extraction Progress</div>
+            <div className="panel-title" style={{ marginBottom: 12 }}>PDF Extraction</div>
             {progressSteps.map(s => (
               <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 12 }}>
                 <CheckCircle2 size={13} color="#3D9D62" />
@@ -465,28 +554,18 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
           </div>
 
           <div className="panel">
-            <div className="panel-title" style={{ marginBottom: 12 }}>Extraction Confidence</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[
-                { label: 'Dimensions', pct: 98, color: '#3D9D62' },
-                { label: 'Material', pct: 90, color: '#3D9D62' },
-                { label: 'Structure', pct: 85, color: '#3D9D62' },
-                { label: 'Finishing', pct: 78, color: '#D97706' },
-              ].map(c => (
-                <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
-                  <span style={{ width: 80, color: 'var(--muted)' }}>{c.label}</span>
-                  <div className="bar-track">
-                    <div style={{ height: '100%', width: `${c.pct}%`, background: c.color, borderRadius: 99, transition: 'width 0.6s' }} />
-                  </div>
-                  <span style={{ fontFamily: 'Manrope', fontWeight: 700, fontSize: 11 }}>{c.pct}%</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ marginTop: 16, padding: '10px 12px', background: 'var(--orange-light)', borderRadius: 7, fontSize: 11, color: 'var(--ink-3)', border: '1px solid var(--orange-border)' }}>
-              <strong>Confirmation Required</strong> for 2 fields — review in Technical Data step.
+            <div className="panel-title" style={{ marginBottom: 12 }}>Extraction Status</div>
+            <div style={{ padding: '10px 12px', background: 'var(--orange-light)', borderRadius: 7, fontSize: 11, color: 'var(--ink-3)', border: '1px solid var(--orange-border)' }}>
+              {extractionNotice || 'Review component names, materials, and every process YES/NO value before costing.'}
             </div>
           </div>
+        </div>
+      )}
+
+      {extracted && (
+        <div style={{ marginTop: 16 }}>
+          <ComponentProcessMatrix components={components} onChange={onComponentsChange} title="Review Components and Process Routing" />
+          {extractionNotice && <div className="info-banner" style={{ marginTop: 10 }}>{extractionNotice}</div>}
         </div>
       )}
 
@@ -500,14 +579,12 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
         <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setShowDimensions(false); }}>
           <section className="modal" role="dialog" aria-modal="true" aria-labelledby="derived-dimensions-title" style={{ width: 420 }}>
             <div className="modal-header">
-              <div><span className="eyebrow">Layout extraction</span><h2 id="derived-dimensions-title">Extracted dimensions</h2></div>
+              <div><span className="eyebrow">Layout review</span><h2 id="derived-dimensions-title">Dimension status</h2></div>
               <button className="modal-close" type="button" aria-label="Close dimensions" onClick={() => setShowDimensions(false)}><X size={16} /></button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-              {[['Length', '320 mm'], ['Width', '120 mm'], ['Height', '80 mm']].map(([label, value]) => (
-                <div key={label}><div className="form-label">{label}</div><strong>{value}</strong></div>
-              ))}
-            </div>
+            <p><strong>Finished box size:</strong> {layoutData?.document_fields?.finished_box_size?.value || 'Confirmation Required'}</p>
+            <p><strong>Drawing dimensions:</strong> {layoutData?.layout_dimensions?.length ? layoutData.layout_dimensions.map(field => field.value).join(', ') : 'No explicit dimensions extracted.'}</p>
+            <p>Confirm units and component associations before costing. Extracted component values are available in Technical Data Review and module overrides.</p>
             <div className="modal-footer"><button className="btn btn-primary" type="button" onClick={() => setShowDimensions(false)}>Done</button></div>
           </section>
         </div>
@@ -518,12 +595,61 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName }) {
 }
 
 // ── Step 2: Technical Data Review ─────────────────────────
-function StepTechnicalData({ form, setForm, onNext, onBack }) {
+function StepTechnicalData({ form, setForm, components, onComponentsChange, onNext, onBack }) {
   const [notes, setNotes] = useState('');
-
-  const handleStatus = (i, status) => {
-    // toggle confirmation status (visual only for demo)
+  const documentFields = form.layout_extraction?.document_fields || {};
+  const finishedSize = documentFields.finished_box_size?.normalized_value;
+  const previewDimensionLabel = finishedSize
+    ? `${finishedSize.length} x ${finishedSize.width} x ${finishedSize.height} mm`
+    : 'Dimensions unconfirmed';
+  const sourceDescription = field => {
+    const sourceName = { pymupdf_text: 'PyMuPDF', tesseract_ocr: 'Tesseract OCR', vision: 'Vision' }[field?.source] || 'Estimate form';
+    return `${sourceName}${field?.page ? ` · p.${field.page}` : ''}${field?.confidence ? ` · ${Math.round(field.confidence * 100)}%` : ''}`;
   };
+  const documentLabels = {
+    project_name: 'Project Name', customer_name: 'Customer / Brand', product_name: 'Product Name',
+    box_type: 'Box Type', finished_box_size: 'Finished Box Size', revision: 'Revision', drawing_version: 'Drawing Version', prepared_date: 'Prepared Date',
+  };
+  const documentRows = Object.entries(documentLabels)
+    .filter(([key]) => documentFields[key]?.value)
+    .map(([key, label]) => [label, documentFields[key].value, sourceDescription(documentFields[key]), documentFields[key].review_status || 'Review Required']);
+  const technicalRows = [
+    ['Order Quantity', documentFields.quantity?.value || Number(form.quantity || 0).toLocaleString(), documentFields.quantity ? sourceDescription(documentFields.quantity) : 'Estimate form', documentFields.quantity?.review_status || 'Ready'],
+    ...documentRows,
+    ['Base Material', form.kappa_material, 'Costing inputs', 'Review in module'],
+    ['Base Material GSM / Thickness', `${form.kappa_gsm_at_1mm} GSM / ${form.kappa_thickness_mm} mm`, 'Costing inputs', 'Review in module'],
+    ['Wrapper GSM', `${form.wrapper_gsm} GSM`, 'Costing inputs', 'Review in module'],
+    ['Printing Method / Colour', `${form.print_method} / ${form.print_colour_configuration}`, 'Costing inputs', 'Review in module'],
+    ['Lamination Method / Finish', `${form.lamination_type} / ${form.lamination_finish}`, 'Costing inputs', 'Review in module'],
+    ...components.flatMap(component => {
+      const enabled = Object.entries(component.processes || {}).filter(([, value]) => value === true).map(([process]) => process);
+      const materialName = component.material?.toUpperCase() || '';
+      const criticalFields = ['sheet_size', 'ups'];
+      if (materialName.includes('KAPPA')) criticalFields.push('thickness_mm', 'gsm_per_mm');
+      if (materialName.includes('ART PAPER') || materialName.includes('DUPLEX')) criticalFields.push('gsm');
+      if (component.processes?.Printing === true) criticalFields.push('printing_method');
+      if (component.processes?.Lamination === true) criticalFields.push('lamination_method', 'lamination_finish');
+      const extractedRows = Object.entries(component.extracted_fields || {})
+        .filter(([key, field]) => key !== 'component_name' && key !== 'material' && (
+          field?.value != null || criticalFields.includes(key)
+        ))
+        .map(([key, field]) => [
+          `${component.component_name} · ${key.startsWith('process_') ? key.slice(8) : ({ sheet_size: 'Sheet Size', gsm_per_mm: 'GSM per 1 mm', thickness_mm: 'Thickness', gsm: 'GSM', ups: 'UPS' }[key] || key)}`,
+          field.value || 'Confirmation Required',
+          field.source === 'not_found' ? `Not found in PDF${field.page ? ` · p.${field.page}` : ''}` : sourceDescription(field),
+          field.review_status || 'Confirmation Required',
+        ]);
+      return [
+        [
+          `${component.component_name}_${component.material}`,
+          enabled.length ? enabled.join(', ') : 'No process marked YES',
+          component.source === 'pdf_text' ? `PDF · p.${component.source_page || '?' } · ${Math.round((component.confidence || 0) * 100)}%` : 'Manual entry',
+          enabled.length ? 'Review matrix' : 'Confirm routing',
+        ],
+        ...extractedRows,
+      ];
+    }),
+  ];
 
   return (
     <div>
@@ -531,39 +657,25 @@ function StepTechnicalData({ form, setForm, onNext, onBack }) {
         {/* Fields table */}
         <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
-            <div className="panel-title">AI Extracted Technical Data</div>
-            <div className="panel-sub">Review and confirm the extracted information</div>
+            <div className="panel-title">Technical Data Review</div>
+            <div className="panel-sub">Current estimate inputs and component data from the shared process matrix</div>
           </div>
           <table>
             <thead>
               <tr>
                 <th>Parameter</th>
-                <th style={{ textAlign: 'right' }}>Extracted Value</th>
-                <th style={{ textAlign: 'right' }}>Confidence</th>
+                <th style={{ textAlign: 'right' }}>Current Value</th>
+                <th>Source</th>
                 <th>Review Status</th>
               </tr>
             </thead>
             <tbody>
-              {AI_FIELDS.map((f, i) => (
-                <tr key={f.label}>
-                  <td style={{ fontWeight: 500, fontSize: 12 }}>{f.label}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'Manrope', fontWeight: 600, fontSize: 12 }}>{f.value}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: f.confidence >= 90 ? '#3D9D62' : f.confidence >= 80 ? '#D97706' : '#E53E3E' }}>
-                      {f.confidence}%
-                    </span>
-                  </td>
-                  <td>
-                    {f.status === 'Confirmed' ? (
-                      <span className="pill pill-confirmed" style={{ fontSize: 10 }}>
-                        <CheckCircle2 size={10} style={{ marginRight: 3 }} />Confirmed
-                      </span>
-                    ) : (
-                      <span className="pill pill-required" style={{ fontSize: 10 }}>
-                        <AlertCircle size={10} style={{ marginRight: 3 }} />Confirmation Required
-                      </span>
-                    )}
-                  </td>
+              {technicalRows.map(([label, value, source, status]) => (
+                <tr key={label}>
+                  <td style={{ fontWeight: 500, fontSize: 12 }}>{label}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'Manrope', fontWeight: 600, fontSize: 12 }}>{value}</td>
+                  <td style={{ fontSize: 11, color: 'var(--muted)' }}>{source}</td>
+                  <td><span className={status.startsWith('Confirm') ? 'pill pill-required' : 'pill pill-confirmed'} style={{ fontSize: 10 }}>{status}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -582,7 +694,7 @@ function StepTechnicalData({ form, setForm, onNext, onBack }) {
                 <rect x="40" y="100" width="140" height="30" fill="#FFE8E2" stroke="#FF7A5C" strokeWidth="1" rx="1" />
                 <rect x="0" y="30" width="40" height="70" fill="#FFF8F5" stroke="#FF7A5C" strokeWidth="1" rx="1" />
                 <rect x="180" y="30" width="40" height="70" fill="#FFF8F5" stroke="#FF7A5C" strokeWidth="1" rx="1" />
-                <text x="110" y="68" textAnchor="middle" fontSize="11" fill="#FF5A3A" fontFamily="Manrope" fontWeight="600">220 mm</text>
+                <text x="110" y="68" textAnchor="middle" fontSize="11" fill="#FF5A3A" fontFamily="Manrope" fontWeight="600">{previewDimensionLabel}</text>
               </svg>
             </div>
           </div>
@@ -606,11 +718,15 @@ function StepTechnicalData({ form, setForm, onNext, onBack }) {
           <div className="warn-banner">
             <AlertCircle size={15} />
             <div>
-              <strong style={{ fontSize: 12 }}>2 fields need confirmation</strong>
-              <div style={{ fontSize: 11, marginTop: 2 }}>Order Quantity and Embellishments require manual verification.</div>
+              <strong style={{ fontSize: 12 }}>{components.length ? 'Review component and process data' : 'No components are available yet'}</strong>
+              <div style={{ fontSize: 11, marginTop: 2 }}>Confirm the matrix values before calculating costs. Only YES processes create costing rows.</div>
             </div>
           </div>
         </div>
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <ComponentProcessMatrix components={components} onChange={onComponentsChange} title="Confirmed Component–Process Matrix" />
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
@@ -626,13 +742,23 @@ function StepTechnicalData({ form, setForm, onNext, onBack }) {
 }
 
 // ── Step 3: Costing Modules ────────────────────────────────
-function StepCostingModules({ form, setForm, masterRates, result, moduleResults, onCalculate, onCalculateModule, calculatingAll, calculatingModule, onNext, onBack }) {
-  const [activeTab, setActiveTab] = useState('Kappa');
+function StepCostingModules({ form, setForm, masterRates, result, moduleResults, onCalculate, onCalculateModule, calculatingAll, calculatingModule, components, onComponentsChange, onNext, onBack }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedModule = searchParams.get('module');
+  const activeTab = MODULE_TABS.includes(requestedModule) ? requestedModule : 'Kappa';
+  const selectTab = (module) => {
+    if (module === activeTab) return;
+    setSearchParams(params => {
+      params.set('module', module);
+      return params;
+    });
+  };
   const update = (key, val) => setForm(f => ({ ...f, [key]: val }));
   const line = moduleResults[activeTab] ?? result?.lines?.find(l => l.module === activeTab);
+  const applicableComponents = componentsForModule(components, activeTab);
 
   const tabIcons = {
-    Kappa: Layers, Wrapper: Box, Printing: Printer, Lamination: Layers,
+    Kappa: Layers, Wrapper: Box, Insert: Layers, Printing: Printer, Lamination: Layers,
     Glue: Droplets, Punching: Scissors, Embellishments: Sparkles,
     Accessories: Package, Conversion: Zap,
   };
@@ -644,31 +770,59 @@ function StepCostingModules({ form, setForm, masterRates, result, moduleResults,
         <div style={{ display: 'flex', gap: 16, fontSize: 13, color: 'var(--muted)' }}>
           <span>Order Qty: <strong style={{ color: 'var(--ink-2)', fontFamily: 'Manrope', fontSize: 22, fontWeight: 800, lineHeight: 1 }}>{form.quantity.toLocaleString()}</strong></span>
           {result && <span>Cost/Box: <strong style={{ color: 'var(--orange)' }}>₹ {result.cost_per_box?.toFixed(2)}</strong></span>}
+          {!['Conversion', 'One Time Cost'].includes(activeTab) && line?.unit_cost != null && (
+            <span>
+              {line.unit_label === 'sheet' ? 'Per Sheet' : 'Per Box'}: <strong style={{ color: 'var(--amazonite)' }}>
+                {money(line.unit_cost)} / {line.unit_label}
+              </strong>
+            </span>
+          )}
         </div>
-        <button className="btn btn-primary" onClick={onCalculate} disabled={calculatingAll || calculatingModule !== null}>
-          <Cpu size={14} /> {calculatingAll ? 'Calculating...' : 'Calculate All Modules'}
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => onCalculateModule(activeTab)}
+            disabled={calculatingAll || calculatingModule !== null || applicableComponents.length === 0}
+          >
+            <Calculator size={14} /> {calculatingModule === activeTab ? 'Calculating...' : `${activeTab === 'Kappa' ? 'Base Material' : activeTab} Calculate`}
+          </button>
+          <button className="btn btn-primary" onClick={onCalculate} disabled={calculatingAll || calculatingModule !== null}>
+            <Cpu size={14} /> {calculatingAll ? 'Calculating...' : 'Calculate All Modules'}
+          </button>
+        </div>
       </div>
 
       {/* Module tabs */}
       <div className="module-tabs">
         {MODULE_TABS.map(t => (
-          <button key={t} className={`module-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
-            {t}
+          <button key={t} className={`module-tab ${activeTab === t ? 'active' : ''}`} onClick={() => selectTab(t)}>
+            {t === 'Kappa' ? 'Base Material' : t}
           </button>
         ))}
       </div>
 
+      <div className="info-banner" style={{ marginBottom: 14 }}>
+        <span><strong>{applicableComponents.length} applicable component{applicableComponents.length === 1 ? '' : 's'}:</strong> {applicableComponents.length ? applicableComponents.map(component => `${component.component_name}_${component.material}`).join(', ') : 'No component is marked YES for this process.'}</span>
+      </div>
+      <ComponentProcessInputs module={activeTab} components={components} onChange={onComponentsChange} />
+
       {/* Module panels */}
-      {activeTab === 'Kappa' && <KappaModule form={form} update={update} masterRates={masterRates} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Wrapper' && <WrapperModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Printing' && <PrintingModule form={form} update={update} masterRates={masterRates} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Lamination' && <LaminationModule form={form} update={update} masterRates={masterRates} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Glue' && <GlueModule form={form} update={update} masterRates={masterRates} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Punching' && <PunchingModule form={form} update={update} masterRates={masterRates} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Embellishments' && <EmbellishmentsModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Accessories' && <AccessoriesModule form={form} update={update} line={line} onCalculate={() => onCalculateModule(activeTab)} calculating={calculatingAll || calculatingModule === activeTab} />}
-      {activeTab === 'Conversion' && <ConfigRequiredModule title="Conversion" desc="Machine + Labour + Setup formula is pending business confirmation." />}
+      {activeTab === 'Kappa' && <KappaModule form={form} update={update} masterRates={masterRates} line={line} />}
+      {activeTab === 'Insert' && <KappaModule form={form} update={update} masterRates={masterRates} line={line} title="Insert Costing Details" />}
+      {activeTab === 'Wrapper' && <WrapperModule form={form} update={update} line={line} />}
+      {activeTab === 'Printing' && <PrintingModule form={form} update={update} masterRates={masterRates} line={line} />}
+      {activeTab === 'Lamination' && <LaminationModule form={form} update={update} masterRates={masterRates} line={line} />}
+      {activeTab === 'Glue' && <GlueModule form={form} update={update} masterRates={masterRates} line={line} />}
+      {activeTab === 'Punching' && <PunchingModule form={form} update={update} masterRates={masterRates} line={line} />}
+      {activeTab === 'Embellishments' && <EmbellishmentsModule form={form} update={update} line={line} />}
+      {activeTab === 'Accessories' && <AccessoriesModule form={form} update={update} line={line} />}
+      {activeTab === 'Conversion' && <ConversionModule form={form} update={update} line={line} />}
+      {activeTab === 'One Time Cost' && (
+        <>
+          <ComponentProcessMatrix components={components} onChange={onComponentsChange} title="Tooling and Die Costing" />
+          {line && <div style={{ marginTop: 12 }}><ModuleResultCard line={line} /></div>}
+        </>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
         <button className="btn btn-secondary" onClick={onBack}><ArrowLeft size={15} /> Back</button>
@@ -678,7 +832,7 @@ function StepCostingModules({ form, setForm, masterRates, result, moduleResults,
   );
 }
 
-function ModuleResultCard({ line, onCalculate, calculating }) {
+function ModuleResultCard({ line }) {
   return (
     <div style={{ background: 'var(--line-2)', borderRadius: 8, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div className="line-item">
@@ -687,34 +841,47 @@ function ModuleResultCard({ line, onCalculate, calculating }) {
       </div>
       <div className="line-item">
         <span>Cost / Box</span>
-        <strong style={{ fontFamily: 'Manrope', fontSize: 15, color: 'var(--orange)' }}>{line ? money(line.cost_per_box) : '—'}</strong>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+          <strong style={{ fontFamily: 'Manrope', fontSize: 15, color: 'var(--orange)' }}>{line ? money(line.cost_per_box) : '—'}</strong>
+          {line?.unit_cost != null && (
+            <span style={{ color: 'var(--amazonite)', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+              {money(line.unit_cost)} / {line.unit_label}
+            </span>
+          )}
+        </div>
       </div>
       <div className="line-item">
         <span>Weightage</span>
         <strong>{line?.weightage_percent == null ? '—' : `${line.weightage_percent.toFixed(1)}%`}</strong>
       </div>
-      <button className="btn btn-primary btn-sm" onClick={onCalculate} disabled={calculating}>
-        {calculating ? 'Calculating...' : 'Calculate'}
-      </button>
+      {line?.component_lines?.map((componentLine, index) => (
+        <div key={`${componentLine.component_label}-${componentLine.process}-${index}`} style={{ borderTop: '1px solid var(--line)', paddingTop: 8, fontSize: 11 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <strong>{componentLine.component_label}</strong>
+            <span>{money(componentLine.total_cost)}</span>
+          </div>
+          <div style={{ color: 'var(--muted-2)', marginTop: 3 }}>{componentLine.process} · {componentLine.weightage_percent?.toFixed(1) ?? '—'}% of estimate</div>
+        </div>
+      ))}
     </div>
   );
 }
 
 // ── Kappa Module ───────────────────────────────────────────
-function KappaModule({ form, update, masterRates, line, onCalculate, calculating }) {
+function KappaModule({ form, update, masterRates, line, title = 'Base Material Costing Details' }) {
   const effectiveRate = form.kappa_override_rate ?? form.kappa_master_rate;
   return (
     <div className="panel" style={{ marginBottom: 0 }}>
       <div className="panel-header">
         <div>
-          <div className="panel-title">Kappa Costing Details</div>
+          <div className="panel-title">{title}</div>
           <div className="panel-sub">Board material costing — Effective GSM = GSM@1mm × Thickness</div>
         </div>
         {line && <span className="pill pill-confirmed">Calculated</span>}
       </div>
 
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Board Type" options={['Kappa Board', 'FBB', 'Duplex Board']} value={form.kappa_material} onChange={value => {
+        <Field label="Base Material Type" options={[{ value: 'Kappa Board', label: 'Base Material' }, 'FBB', 'Duplex Board']} value={form.kappa_material} onChange={value => {
           const rateKey = { 'Kappa Board': 'kappa_rate_per_kg', FBB: 'fbb_rate_per_kg', 'Duplex Board': 'duplex_board_rate_per_kg' }[value];
           const rate = masterRates?.[rateKey] ?? form.kappa_master_rate;
           update('kappa_material', value);
@@ -723,12 +890,13 @@ function KappaModule({ form, update, masterRates, line, onCalculate, calculating
         }} />
         <Field label="GSM" value={form.kappa_gsm_at_1mm} onChange={v => update('kappa_gsm_at_1mm', v)} />
         <Field label="Thickness (mm)" value={form.kappa_thickness_mm} onChange={v => update('kappa_thickness_mm', v)} />
-        <Field label="Sheet Size (L × W mm)" type="text" value={`${form.kappa_sheet_length_mm} × ${form.kappa_sheet_width_mm}`} readOnly />
+        <SheetDimensionField label="Sheet L (in)" valueMm={form.kappa_sheet_length_mm} onChange={value => update('kappa_sheet_length_mm', value)} />
       </div>
       <div className="form-grid-4" style={{ marginBottom: 20 }}>
         <Field label="UPS (Sheets)" value={form.kappa_ups} onChange={v => update('kappa_ups', v)} />
         <Field label="Order Quantity" value={form.quantity} onChange={v => update('quantity', v)} />
         <Field label="Wastage (%)" value={form.kappa_wastage_percent} onChange={v => update('kappa_wastage_percent', v)} />
+        <SheetDimensionField label="Sheet W (in)" valueMm={form.kappa_sheet_width_mm} onChange={value => update('kappa_sheet_width_mm', value)} />
       </div>
 
       <div style={{ marginBottom: 20 }}>
@@ -745,16 +913,16 @@ function KappaModule({ form, update, masterRates, line, onCalculate, calculating
       <div className="grid-col-6-4" style={{ gap: 16 }}>
           {line ? <CalcTracePanel
             rows={line.trace.map(t => ({ label: t.label, value: t.value }))}
-            formula="Total Cost = Final Sheets × KG/Sheet × Rate/KG"
+            formula={line.formula}
           /> : <div />}
-          <ModuleResultCard line={line} onCalculate={onCalculate} calculating={calculating} />
+          <ModuleResultCard line={line} />
       </div>
     </div>
   );
 }
 
 // ── Wrapper Module ─────────────────────────────────────────
-function WrapperModule({ form, update, line, onCalculate, calculating }) {
+function WrapperModule({ form, update, line }) {
   const effectiveRate = form.wrapper_override_rate ?? form.wrapper_master_rate;
   return (
     <div className="panel">
@@ -768,8 +936,8 @@ function WrapperModule({ form, update, line, onCalculate, calculating }) {
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
         <Field label="GSM" value={form.wrapper_gsm} onChange={v => update('wrapper_gsm', v)} />
         <Field label="UPS" value={form.wrapper_ups} onChange={v => update('wrapper_ups', v)} />
-        <Field label="Sheet L (mm)" value={form.wrapper_sheet_length_mm} onChange={v => update('wrapper_sheet_length_mm', v)} />
-        <Field label="Sheet W (mm)" value={form.wrapper_sheet_width_mm} onChange={v => update('wrapper_sheet_width_mm', v)} />
+        <SheetDimensionField label="Sheet L (in)" valueMm={form.wrapper_sheet_length_mm} onChange={value => update('wrapper_sheet_length_mm', value)} />
+        <SheetDimensionField label="Sheet W (in)" valueMm={form.wrapper_sheet_width_mm} onChange={value => update('wrapper_sheet_width_mm', value)} />
       </div>
       <div className="form-grid-4" style={{ marginBottom: 20 }}>
         <Field label="Wastage (%)" value={form.wrapper_wastage_percent} onChange={v => update('wrapper_wastage_percent', v)} />
@@ -786,15 +954,15 @@ function WrapperModule({ form, update, line, onCalculate, calculating }) {
         />
       </div>
       <div className="grid-col-6-4" style={{ gap: 16 }}>
-        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula="Total Cost = Final Sheets × KG/Sheet × Rate/KG" /> : <div />}
-        <ModuleResultCard line={line} onCalculate={onCalculate} calculating={calculating} />
+        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula={line.formula} /> : <div />}
+        <ModuleResultCard line={line} />
       </div>
     </div>
   );
 }
 
 // ── Printing Module ────────────────────────────────────────
-function PrintingModule({ form, update, masterRates, line, onCalculate, calculating }) {
+function PrintingModule({ form, update, masterRates, line }) {
   return (
     <div className="panel">
       <div className="panel-header">
@@ -809,8 +977,8 @@ function PrintingModule({ form, update, masterRates, line, onCalculate, calculat
       <div className="grid-col-6-4" style={{ gap: 16, marginBottom: 20 }}>
         <div>
           <div className="form-grid-4" style={{ marginBottom: 16 }}>
-            <Field label="Printing Type" type="text" value="Offset Printing" readOnly />
-            <Field label="Colors" type="text" value="4-Color (CMYK)" readOnly />
+            <Field label="Printing Method" options={['Offset', 'Digital']} value={form.print_method} onChange={value => update('print_method', value)} />
+            <Field label="Colour Configuration" options={['1 Colour', '2 Colour', '4-Color CMYK', '5 Colour']} value={form.print_colour_configuration} onChange={value => update('print_colour_configuration', value)} />
             <Field label="Printing Size (mm)" type="text" value={`${form.lamination_sheet_length_in * 25.4 | 0} × ${form.lamination_sheet_width_in * 25.4 | 0}`} readOnly />
           </div>
           <div className="form-grid-4" style={{ marginBottom: 16 }}>
@@ -832,7 +1000,7 @@ function PrintingModule({ form, update, masterRates, line, onCalculate, calculat
           </div>
           <div>
             <div className="form-label" style={{ marginBottom: 8 }}>Sheet Size</div>
-            <Field label="" options={['15x20', '20x28', '28x40']} value={form.print_sheet_size} onChange={value => {
+            <Field label="" options={[{ value: '15x20', label: '15 × 20 in' }, { value: '20x28', label: '20 × 28 in' }, { value: '28x40', label: '28 × 40 in' }]} value={form.print_sheet_size} onChange={value => {
               const [firstKey, additionalKey] = PRINT_RATE_KEYS[value];
               update('print_sheet_size', value);
               update('print_master_rate', masterRates?.[firstKey] ?? form.print_master_rate);
@@ -855,16 +1023,17 @@ function PrintingModule({ form, update, masterRates, line, onCalculate, calculat
       </div>
 
       <div className="grid-col-6-4" style={{ gap: 16 }}>
-        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula="Total Cost = First 1000 Rate + (Sheets − 1000) × Additional Rate" /> : <div />}
-        <ModuleResultCard line={line} onCalculate={onCalculate} calculating={calculating} />
+            {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula={line.formula} /> : <div />}
+        <ModuleResultCard line={line} />
       </div>
     </div>
   );
 }
 
 // ── Lamination ─────────────────────────────────────────────
-function LaminationModule({ form, update, masterRates, line, onCalculate, calculating }) {
-  const masterRate = form.lam_master_rate;
+function LaminationModule({ form, update, masterRates, line }) {
+  const finishKey = form.lamination_finish.toLowerCase().replace(' ', '_');
+  const masterRate = form.lamination_method_finish_rates?.[`${form.lamination_type}_${finishKey}`] || null;
   return (
     <div className="panel">
       <div className="panel-header">
@@ -872,24 +1041,31 @@ function LaminationModule({ form, update, masterRates, line, onCalculate, calcul
         <div className="panel-sub">Cost = Sheet Area × Rate / 100 sq.in × Final Wrapper Sheets</div>
       </div>
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Type" options={['thermal', 'cold', 'dry']} value={form.lamination_type} onChange={value => {
+        <Field label="Method" options={['thermal', 'cold', 'dry']} value={form.lamination_type} onChange={value => {
           update('lamination_type', value);
-          update('lam_master_rate', masterRates?.[`lamination_${value}`] ?? form.lam_master_rate);
+          const rate = form.lamination_method_finish_rates?.[`${value}_${finishKey}`] || null;
+          update('lam_master_rate', rate);
+        }} />
+        <Field label="Finish" options={['Matte', 'Gloss', 'Soft Touch', 'Other']} value={form.lamination_finish} onChange={value => {
+          update('lamination_finish', value);
+          const key = value.toLowerCase().replace(' ', '_');
+          update('lam_master_rate', form.lamination_method_finish_rates?.[`${form.lamination_type}_${key}`] || null);
         }} />
         <Field label="Sheet L (in)" value={form.lamination_sheet_length_in} onChange={v => update('lamination_sheet_length_in', v)} />
         <Field label="Sheet W (in)" value={form.lamination_sheet_width_in} onChange={v => update('lamination_sheet_width_in', v)} />
       </div>
-      <RateConfigRow masterRate={masterRate} overrideRate={form.lam_override_rate} effectiveRate={form.lam_override_rate ?? masterRate} onOverrideChange={v => update('lam_override_rate', v)} onReset={() => update('lam_override_rate', null)} />
+      {masterRate == null ? <div className="warn-banner" style={{ marginBottom: 12 }}>CONFIGURATION REQUIRED — set the {form.lamination_type} + {form.lamination_finish} rate in Master Configuration.</div> : null}
+      <RateConfigRow masterRate={masterRate ?? 0} overrideRate={form.lam_override_rate} effectiveRate={form.lam_override_rate ?? masterRate} onOverrideChange={v => update('lam_override_rate', v)} onReset={() => update('lam_override_rate', null)} />
       <div className="grid-col-6-4" style={{ gap: 16 }}>
-        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula="Cost/Sheet = L(in) × W(in) × Rate / 100" /> : <div />}
-        <ModuleResultCard line={line} onCalculate={onCalculate} calculating={calculating} />
+        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula={line.formula} /> : <div />}
+        <ModuleResultCard line={line} />
       </div>
     </div>
   );
 }
 
 // ── Glue ───────────────────────────────────────────────────
-function GlueModule({ form, update, masterRates, line, onCalculate, calculating }) {
+function GlueModule({ form, update, masterRates, line }) {
   const updateLine = (i, key, val) => {
     const next = form.glue_lines.map((l, idx) => idx === i ? { ...l, [key]: val } : l);
     update('glue_lines', next);
@@ -910,9 +1086,9 @@ function GlueModule({ form, update, masterRates, line, onCalculate, calculating 
         {form.glue_lines.map((gl, i) => (
           <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 10, marginBottom: 8 }}>
             <input className="form-input" type="text" value={gl.name} onChange={e => updateLine(i, 'name', e.target.value)} />
-            <input className="form-input" type="number" value={gl.area_sq_in} onChange={e => updateLine(i, 'area_sq_in', Number(e.target.value))} />
-            <input className="form-input" type="number" value={gl.gsm} onChange={e => updateLine(i, 'gsm', Number(e.target.value))} />
-            <input className="form-input" type="number" value={gl.rate_per_kg} onChange={e => updateLine(i, 'rate_per_kg', Number(e.target.value))} />
+            <input className="form-input" type="number" value={gl.area_sq_in} onChange={e => updateLine(i, 'area_sq_in', e.target.value === '' ? '' : Number(e.target.value))} />
+            <input className="form-input" type="number" value={gl.gsm} onChange={e => updateLine(i, 'gsm', e.target.value === '' ? '' : Number(e.target.value))} />
+            <input className="form-input" type="number" value={gl.rate_per_kg} onChange={e => updateLine(i, 'rate_per_kg', e.target.value === '' ? '' : Number(e.target.value))} />
           </div>
         ))}
         <button className="btn btn-secondary btn-sm" onClick={() => update('glue_lines', [...form.glue_lines, { name: 'Component', area_sq_in: 0, gsm: 20, rate_per_kg: masterRates?.glue_rate_per_kg ?? 90 }])}>
@@ -920,15 +1096,15 @@ function GlueModule({ form, update, masterRates, line, onCalculate, calculating 
         </button>
       </div>
       <div className="grid-col-6-4" style={{ gap: 16 }}>
-        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula="Glue Weight = Area × 0.00064516 × GSM / 1000" /> : <div />}
-        <ModuleResultCard line={line} onCalculate={onCalculate} calculating={calculating} />
+        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula={line.formula} /> : <div />}
+        <ModuleResultCard line={line} />
       </div>
     </div>
   );
 }
 
 // ── Punching ───────────────────────────────────────────────
-function PunchingModule({ form, update, masterRates, line, onCalculate, calculating }) {
+function PunchingModule({ form, update, masterRates, line }) {
   return (
     <div className="panel">
       <div className="panel-header">
@@ -943,20 +1119,20 @@ function PunchingModule({ form, update, masterRates, line, onCalculate, calculat
         <Field label="Machine Rate (₹/hr)" value={form.punching_machine_rate_per_hour} onChange={v => update('punching_machine_rate_per_hour', v)} />
       </div>
       <div className="grid-col-6-4" style={{ gap: 16 }}>
-        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula="Punching Cost = (Production Hrs + Setup Hrs) × Machine Rate" /> : <div />}
-        <ModuleResultCard line={line} onCalculate={onCalculate} calculating={calculating} />
+        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula={line.formula} /> : <div />}
+        <ModuleResultCard line={line} />
       </div>
     </div>
   );
 }
 
 // ── Embellishments ─────────────────────────────────────────
-function EmbellishmentsModule({ form, update, line, onCalculate, calculating }) {
+function EmbellishmentsModule({ form, update, line }) {
   return (
     <div className="panel">
       <div className="panel-header">
         <div className="panel-title">Embellishments Costing Details</div>
-        <div className="panel-sub">Applied cost = max(Area × Rate + Setup, Minimum)</div>
+        <div className="panel-sub">Applied cost = max(Area × Rate + Setup, Tool Cost)</div>
       </div>
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
         <Field label="Type" options={['Gold Foil', 'Silver Foil', 'Rose Gold', 'Spot UV', 'Drip-Off', 'Embossing', 'Debossing']} value={form.embellishment_type} onChange={v => update('embellishment_type', v)} />
@@ -965,18 +1141,18 @@ function EmbellishmentsModule({ form, update, line, onCalculate, calculating }) 
         <Field label="Setup (₹)" value={form.embellishment_setup} onChange={v => update('embellishment_setup', v)} />
       </div>
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Minimum Charge (₹)" value={form.embellishment_minimum} onChange={v => update('embellishment_minimum', v)} />
+        <Field label="Tool Cost (₹)" value={form.embellishment_minimum} onChange={v => update('embellishment_minimum', v)} />
       </div>
       <div className="grid-col-6-4" style={{ gap: 16 }}>
-        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula="Embellishment Cost = max(Area × Rate + Setup, Minimum)" /> : <div />}
-        <ModuleResultCard line={line} onCalculate={onCalculate} calculating={calculating} />
+        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula={line.formula} /> : <div />}
+        <ModuleResultCard line={line} />
       </div>
     </div>
   );
 }
 
 // ── Accessories ────────────────────────────────────────────
-function AccessoriesModule({ form, update, line, onCalculate, calculating }) {
+function AccessoriesModule({ form, update, line }) {
   const updateAcc = (i, key, val) => {
     const next = form.accessories.map((a, idx) => idx === i ? { ...a, [key]: val } : a);
     update('accessories', next);
@@ -996,8 +1172,8 @@ function AccessoriesModule({ form, update, line, onCalculate, calculating }) {
         {form.accessories.map((a, i) => (
           <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 8 }}>
             <input className="form-input" type="text" value={a.name} onChange={e => updateAcc(i, 'name', e.target.value)} />
-            <input className="form-input" type="number" value={a.quantity_per_box} onChange={e => updateAcc(i, 'quantity_per_box', Number(e.target.value))} />
-            <input className="form-input" type="number" value={a.unit_cost} onChange={e => updateAcc(i, 'unit_cost', Number(e.target.value))} />
+            <input className="form-input" type="number" value={a.quantity_per_box} onChange={e => updateAcc(i, 'quantity_per_box', e.target.value === '' ? '' : Number(e.target.value))} />
+            <input className="form-input" type="number" value={a.unit_cost} onChange={e => updateAcc(i, 'unit_cost', e.target.value === '' ? '' : Number(e.target.value))} />
           </div>
         ))}
         <button className="btn btn-secondary btn-sm" onClick={() => update('accessories', [...form.accessories, { name: 'Accessory', quantity_per_box: 1, unit_cost: 0 }])}>
@@ -1005,8 +1181,8 @@ function AccessoriesModule({ form, update, line, onCalculate, calculating }) {
         </button>
       </div>
       <div className="grid-col-6-4" style={{ gap: 16 }}>
-        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} /> : <div />}
-        <ModuleResultCard line={line} onCalculate={onCalculate} calculating={calculating} />
+        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula={line.formula} /> : <div />}
+        <ModuleResultCard line={line} />
       </div>
     </div>
   );
@@ -1034,8 +1210,46 @@ function ConfigRequiredModule({ title, desc }) {
   );
 }
 
+function ConversionModule({ form, update, line }) {
+  return (
+    <div className="panel">
+      <div className="panel-header">
+        <div>
+          <div className="panel-title">Conversion Costing</div>
+          <div className="panel-sub">Rates and machine parameters are loaded from Master Configuration.</div>
+        </div>
+      </div>
+      <div className="form-grid-4" style={{ marginBottom: 16 }}>
+        <Field label="Conversion Type" options={['Semi Automatic', 'Automatic', 'Contract']} value={form.conversion_type} onChange={value => update('conversion_type', value)} />
+        {form.conversion_type === 'Semi Automatic' && <>
+          <Field label="Kappa output (boxes/hour)" value={form.conversion_semi_boxes_per_hour} onChange={value => update('conversion_semi_boxes_per_hour', value)} />
+          <Field label="Labour count" value={form.conversion_semi_workers} onChange={value => update('conversion_semi_workers', value)} />
+          <Field label="Monthly salary / worker (₹)" value={form.conversion_monthly_salary} onChange={value => update('conversion_monthly_salary', value)} />
+          <Field label="Working days / month" value={form.conversion_working_days} onChange={value => update('conversion_working_days', value)} />
+          <Field label="Working hours / day" value={form.conversion_hours_per_day} onChange={value => update('conversion_hours_per_day', value)} />
+          <Field label="Side pasting (₹/box)" value={form.conversion_side_pasting_rate_per_box} onChange={value => update('conversion_side_pasting_rate_per_box', value)} />
+        </>}
+        {form.conversion_type === 'Automatic' && <>
+          <Field label="Kappa output (boxes/hour)" value={form.conversion_automatic_boxes_per_hour} onChange={value => update('conversion_automatic_boxes_per_hour', value)} />
+          <Field label="Machine rate (₹/hour)" value={form.conversion_automatic_machine_rate} onChange={value => update('conversion_automatic_machine_rate', value)} />
+          <Field label="Setup rate (₹/hour)" value={form.conversion_automatic_setup_rate} onChange={value => update('conversion_automatic_setup_rate', value)} />
+          <Field label="Setup time (hours)" value={form.conversion_automatic_setup_hours} onChange={value => update('conversion_automatic_setup_hours', value)} />
+        </>}
+        {form.conversion_type === 'Contract' && <Field label="Contract rate (₹/box)" value={form.conversion_contract_rate_per_box} onChange={value => update('conversion_contract_rate_per_box', value)} />}
+      </div>
+      <div className="info-banner">
+        FBB, Duplex and Kraft use the configured side-pasting rate with Semi Automatic selected. Automatic conversion is defined for Kappa only; other combinations remain configuration-required.
+      </div>
+      {line && <div className="grid-col-6-4" style={{ gap: 16, marginTop: 16 }}>
+        <CalcTracePanel rows={line.trace.map(item => ({ label: item.label, value: item.value }))} formula={line.formula} />
+        <ModuleResultCard line={line} />
+      </div>}
+    </div>
+  );
+}
+
 // ── Step 4: Summary & Margin ───────────────────────────────
-function StepSummary({ form, setForm, result, onCalculate, onNext, onBack }) {
+function StepSummary({ form, setForm, result, onCalculate, onComponentsChange, onNext, onBack }) {
   const [margin, setMargin] = useState(form.margin_percent);
 
   const PIE_COLORS = ['#FF5A3A', '#FF7A5C', '#FFB09C', '#FFC352', '#86B9EE', '#A78BFA', '#48BB78', '#F6AD55', '#DCE1E5', '#CBD5E0'];
@@ -1048,6 +1262,15 @@ function StepSummary({ form, setForm, result, onCalculate, onNext, onBack }) {
 
   return (
     <div>
+      <div style={{ marginBottom: 16 }}>
+        <ComponentProcessMatrix components={form.components || []} onChange={onComponentsChange} title="Estimate Component–Process Matrix" />
+      </div>
+      {result?.configuration_required?.length > 0 && (
+        <div className="warn-banner" style={{ marginBottom: 16 }}>
+          <AlertCircle size={15} />
+          <span>CONFIGURATION REQUIRED: {result.configuration_required.join(', ')}. These rows are excluded from manufacturing cost until their rates or business rules are configured.</span>
+        </div>
+      )}
       {!result && (
         <div className="info-banner" style={{ marginBottom: 16 }}>
           <Info size={15} />
@@ -1074,7 +1297,8 @@ function StepSummary({ form, setForm, result, onCalculate, onNext, onBack }) {
             </thead>
             <tbody>
               {result?.lines?.map((l, i) => (
-                <tr key={l.module}>
+                <React.Fragment key={l.module}>
+                <tr>
                   <td style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ width: 8, height: 8, borderRadius: 2, background: PIE_COLORS[i % PIE_COLORS.length], flexShrink: 0 }} />
                     {l.module}
@@ -1085,6 +1309,29 @@ function StepSummary({ form, setForm, result, onCalculate, onNext, onBack }) {
                     <span style={{ fontSize: 12, fontWeight: 600 }}>{l.weightage_percent?.toFixed(1)}%</span>
                   </td>
                 </tr>
+                {l.component_lines?.length > 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '4px 16px 10px' }}>
+                      <details>
+                        <summary style={{ cursor: 'pointer', color: 'var(--orange)', fontSize: 11 }}>View {l.component_lines.length} component cost row{l.component_lines.length === 1 ? '' : 's'}</summary>
+                        <div className="table-wrap" style={{ marginTop: 8 }}>
+                          <table>
+                            <thead><tr><th>Component + Material</th><th>Process</th><th style={{ textAlign: 'right' }}>Total Cost</th><th style={{ textAlign: 'right' }}>Cost / Box</th><th style={{ textAlign: 'right' }}>Cost Weightage</th></tr></thead>
+                            <tbody>{l.component_lines.map((row, rowIndex) => (
+                              <tr key={`${row.component_label}-${row.process}-${rowIndex}`}>
+                                <td>{row.component_label}</td><td>{row.process}</td>
+                                <td style={{ textAlign: 'right' }}>{money(row.total_cost)}</td>
+                                <td style={{ textAlign: 'right' }}>{money(row.cost_per_box)}</td>
+                                <td style={{ textAlign: 'right' }}>{row.weightage_percent?.toFixed(1) ?? '—'}%</td>
+                              </tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </details>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
               {result && (
                 <tr style={{ background: 'var(--orange-light)' }}>
@@ -1143,7 +1390,11 @@ function StepSummary({ form, setForm, result, onCalculate, onNext, onBack }) {
                 <input
                   type="number"
                   value={margin}
-                  onChange={e => { setMargin(Number(e.target.value)); setForm(f => ({ ...f, margin_percent: Number(e.target.value) })); }}
+                  onChange={e => {
+                    const value = e.target.value === '' ? '' : Number(e.target.value);
+                    setMargin(value);
+                    setForm(f => ({ ...f, margin_percent: value }));
+                  }}
                   style={{ width: 50, background: '#3B4047', border: '1px solid #535860', color: '#fff', borderRadius: 5, padding: '4px 8px', fontSize: 12, textAlign: 'right' }}
                 />
                 <span style={{ fontSize: 12 }}>%</span>
@@ -1495,16 +1746,46 @@ export default function CostEstimator() {
           ...current,
           kappa_master_rate: rates[materialRateKey] ?? current.kappa_master_rate,
           kappa_rate_per_kg: rates[materialRateKey] ?? current.kappa_rate_per_kg,
+          fbb_rate_per_kg: rates.fbb_rate_per_kg ?? current.fbb_rate_per_kg,
+          duplex_board_rate_per_kg: rates.duplex_board_rate_per_kg ?? current.duplex_board_rate_per_kg,
           wrapper_master_rate: rates.wrapper_rate_per_kg ?? current.wrapper_master_rate,
           wrapper_rate_per_kg: rates.wrapper_rate_per_kg ?? current.wrapper_rate_per_kg,
           wrapper_make_ready_sheets: rates.wrapper_make_ready_sheets ?? current.wrapper_make_ready_sheets,
           print_master_rate: rates[printFirstKey] ?? current.print_master_rate,
           print_additional_rate: rates[printAdditionalKey] ?? current.print_additional_rate,
           lam_master_rate: rates[`lamination_${current.lamination_type}`] ?? current.lam_master_rate,
+          lamination_method_finish_rates: Object.fromEntries(
+            ['thermal', 'cold', 'dry'].flatMap(method => ['matte', 'gloss', 'soft_touch', 'other'].map(finish => {
+              const key = `${method}_${finish}`;
+              return [key, rates[`lamination_rate_${key}`] ?? 0];
+            })),
+          ),
           glue_lines: current.glue_lines.map(line => ({ ...line, rate_per_kg: rates.glue_rate_per_kg ?? line.rate_per_kg })),
           punching_machine_rate_per_hour: rates.punching_machine_rate_per_hour ?? current.punching_machine_rate_per_hour,
           punching_speed: rates[punchingSpeedKey] ?? current.punching_speed,
           punching_setup_hours: rates.punching_setup_hours ?? current.punching_setup_hours,
+          conversion_semi_boxes_per_hour: rates.conversion_semi_boxes_per_hour ?? current.conversion_semi_boxes_per_hour,
+          conversion_semi_workers: rates.conversion_semi_workers ?? current.conversion_semi_workers,
+          conversion_monthly_salary: rates.conversion_monthly_salary ?? current.conversion_monthly_salary,
+          conversion_working_days: rates.conversion_working_days ?? current.conversion_working_days,
+          conversion_hours_per_day: rates.conversion_hours_per_day ?? current.conversion_hours_per_day,
+          conversion_side_pasting_rate_per_box: rates.conversion_side_pasting_rate_per_box ?? current.conversion_side_pasting_rate_per_box,
+          conversion_automatic_boxes_per_hour: rates.conversion_automatic_boxes_per_hour ?? current.conversion_automatic_boxes_per_hour,
+          conversion_automatic_machine_rate: rates.conversion_automatic_machine_rate ?? current.conversion_automatic_machine_rate,
+          conversion_automatic_setup_rate: rates.conversion_automatic_setup_rate ?? current.conversion_automatic_setup_rate,
+          conversion_automatic_setup_hours: rates.conversion_automatic_setup_hours ?? current.conversion_automatic_setup_hours,
+          conversion_contract_rate_per_box: rates.conversion_contract_rate_per_box ?? current.conversion_contract_rate_per_box,
+          foiling_rate_per_100_sq_in: rates.foiling_rate_per_100_sq_in ?? current.foiling_rate_per_100_sq_in,
+          spot_uv_rate_per_100_sq_in: rates.spot_uv_rate_per_100_sq_in ?? current.spot_uv_rate_per_100_sq_in,
+          drip_off_rate_per_100_sq_in: rates.drip_off_rate_per_100_sq_in ?? current.drip_off_rate_per_100_sq_in,
+          embossing_cost_per_box: rates.embossing_cost_per_box ?? current.embossing_cost_per_box,
+          debossing_cost_per_box: rates.debossing_cost_per_box ?? current.debossing_cost_per_box,
+          punching_die_15x20: rates.punching_die_15x20 ?? current.punching_die_15x20,
+          punching_die_20x28: rates.punching_die_20x28 ?? current.punching_die_20x28,
+          punching_die_25x36: rates.punching_die_25x36 ?? current.punching_die_25x36,
+          punching_die_28x40: rates.punching_die_28x40 ?? current.punching_die_28x40,
+          emboss_deboss_die_rate_per_sq_cm: rates.emboss_deboss_die_rate_per_sq_cm ?? current.emboss_deboss_die_rate_per_sq_cm,
+          foil_stamp_die_rate_per_sq_cm: rates.foil_stamp_die_rate_per_sq_cm ?? current.foil_stamp_die_rate_per_sq_cm,
           embellishment_rate_per_sq_in: rates.embellishment_rate_per_sq_in ?? current.embellishment_rate_per_sq_in,
           embellishment_setup: rates.embellishment_setup ?? current.embellishment_setup,
           embellishment_minimum: rates.embellishment_minimum ?? current.embellishment_minimum,
@@ -1561,10 +1842,17 @@ export default function CostEstimator() {
     setCalculatingModule(module);
     try {
       const inputs = moduleInputs(module, form, wrapperFinalSheets);
+      const requiredModules = ['Kappa', 'Wrapper', 'Printing', 'Lamination', 'Glue', 'Punching', 'Embellishments', 'Accessories'];
+      const hasFullEstimate = result?.lines && requiredModules.every(name => result.lines.some(item => item.module === name));
+      const otherModuleTotals = hasFullEstimate
+        ? result.lines
+          .filter(item => item.module !== module)
+          .map(item => moduleResults[item.module]?.total_cost ?? item.total_cost)
+        : undefined;
       const res = await fetch(`${API_BASE}/estimates/calculate/module`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ module, inputs, estimate_id: estimateId }),
+        body: JSON.stringify({ module, inputs, components: form.components, estimate_id: estimateId, other_module_totals: otherModuleTotals }),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
@@ -1574,16 +1862,12 @@ export default function CostEstimator() {
         throw new Error(detail || `Unable to calculate ${module}`);
       }
       const data = await res.json();
+      if (!data.line) {
+        const missing = data.configuration_required?.length ? data.configuration_required.join(', ') : module;
+        throw new Error(`${missing} is CONFIGURATION REQUIRED. No costing row was created.`);
+      }
       const nextLine = { ...data.line };
       if (module === 'Wrapper') nextLine.wrapper_final_sheets = data.wrapper_final_sheets;
-
-      if (nextLine.weightage_percent == null && result?.lines) {
-        const required = ['Kappa', 'Wrapper', 'Printing', 'Lamination', 'Glue', 'Punching', 'Embellishments', 'Accessories'];
-        if (required.every(name => name === module || result.lines.some(item => item.module === name))) {
-          const total = result.lines.reduce((sum, item) => sum + (item.module === module ? nextLine.total_cost : item.total_cost), 0);
-          nextLine.weightage_percent = total ? Number((nextLine.total_cost / total * 100).toFixed(4)) : 0;
-        }
-      }
 
       setModuleResults(previous => ({ ...previous, [module]: nextLine }));
       if (module === 'Wrapper') {
@@ -1595,6 +1879,62 @@ export default function CostEstimator() {
     } finally {
       setCalculatingModule(null);
     }
+  };
+
+  const handleComponentsChange = async (components) => {
+    const hasPriorCalculation = Boolean(result) || Object.keys(moduleResults).length > 0;
+    setForm(current => ({ ...current, components }));
+    setModuleResults({});
+    if (!hasPriorCalculation) return;
+    setCalculatingAll(true);
+    try {
+      const response = await fetch(`${API_BASE}/estimates/calculate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, components }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Unable to update component routing');
+      }
+      setResult(await response.json());
+    } catch (error) {
+      showToast(error.message || 'Unable to update component routing', true);
+    } finally {
+      setCalculatingAll(false);
+    }
+  };
+
+  const handleLayoutExtracted = extraction => {
+    const documentFields = extraction?.document_fields || {};
+    const quantity = documentFields.quantity?.normalized_value;
+    const wrapperComponent = extraction?.components?.find(component => component.processes?.Wrapper === true);
+    const wrapperInputs = wrapperComponent?.process_inputs?.Wrapper || {};
+    const wrapperSheetSize = [wrapperInputs.wrapper_sheet_length_mm, wrapperInputs.wrapper_sheet_width_mm]
+      .every(Number.isFinite)
+      ? [wrapperInputs.wrapper_sheet_length_mm, wrapperInputs.wrapper_sheet_width_mm]
+        .map(value => Math.round(mmToInches(value)))
+        .sort((first, second) => first - second)
+        .join('x')
+      : null;
+    setForm(current => ({
+      ...current,
+      ...(Number.isInteger(quantity) && quantity > 0 ? { quantity } : {}),
+      ...(wrapperInputs.wrapper_gsm != null ? { wrapper_gsm: wrapperInputs.wrapper_gsm } : {}),
+      ...(wrapperInputs.wrapper_ups != null ? { wrapper_ups: wrapperInputs.wrapper_ups } : {}),
+      ...(wrapperInputs.wrapper_sheet_length_mm != null ? { wrapper_sheet_length_mm: wrapperInputs.wrapper_sheet_length_mm } : {}),
+      ...(wrapperInputs.wrapper_sheet_width_mm != null ? { wrapper_sheet_width_mm: wrapperInputs.wrapper_sheet_width_mm } : {}),
+      ...(wrapperSheetSize && PRINT_RATE_KEYS[wrapperSheetSize] ? { print_sheet_size: wrapperSheetSize } : {}),
+      layout_extraction: extraction ? {
+        document_fields: documentFields,
+        layout_dimensions: extraction.layout_dimensions || [],
+        pages: extraction.pages || [],
+        source: extraction.source,
+        vision_used: Boolean(extraction.vision_used),
+      } : {},
+    }));
+    if (documentFields.project_name?.value) setJobName(documentFields.project_name.value);
+    if (documentFields.customer_name?.value) setCustomer(documentFields.customer_name.value);
   };
 
   // ── Save Draft to DB ────────────────────────────────────
@@ -1652,7 +1992,7 @@ export default function CostEstimator() {
         <div className="page-header-left">
           <span className="eyebrow">Cost Estimator › New Estimate</span>
           <h1 style={{ marginTop: 4 }}>New Cost Estimate</h1>
-          <p>Create a new packaging cost estimate with AI-powered layout analysis</p>
+          <p>Review component routing, calculate process costs, and prepare a customer document</p>
         </div>
         <div className="page-header-right">
           <button className="btn btn-secondary" onClick={handleSaveDraft} disabled={saving}>
@@ -1666,16 +2006,16 @@ export default function CostEstimator() {
 
       {/* Steps */}
       {step === 0 && (
-        <StepLayout onNext={() => setStep(1)} customer={customer} setCustomer={setCustomer} jobName={jobName} setJobName={setJobName} />
+        <StepLayout onNext={() => setStep(1)} customer={customer} setCustomer={setCustomer} jobName={jobName} setJobName={setJobName} components={form.components} onComponentsChange={handleComponentsChange} onExtractionData={handleLayoutExtracted} />
       )}
       {step === 1 && (
-        <StepTechnicalData form={form} setForm={setForm} onNext={() => setStep(2)} onBack={() => setStep(0)} />
+        <StepTechnicalData form={form} setForm={setForm} components={form.components} onComponentsChange={handleComponentsChange} onNext={() => setStep(2)} onBack={() => setStep(0)} />
       )}
       {step === 2 && (
-        <StepCostingModules form={form} setForm={setForm} masterRates={masterRates} result={result} moduleResults={moduleResults} onCalculate={handleCalculate} onCalculateModule={handleCalculateModule} calculatingAll={calculatingAll} calculatingModule={calculatingModule} onNext={() => setStep(3)} onBack={() => setStep(1)} />
+        <StepCostingModules form={form} setForm={setForm} masterRates={masterRates} result={result} moduleResults={moduleResults} onCalculate={handleCalculate} onCalculateModule={handleCalculateModule} calculatingAll={calculatingAll} calculatingModule={calculatingModule} components={form.components} onComponentsChange={handleComponentsChange} onNext={() => setStep(3)} onBack={() => setStep(1)} />
       )}
       {step === 3 && (
-        <StepSummary form={form} setForm={setForm} result={result} onCalculate={handleCalculate} onNext={() => setStep(4)} onBack={() => setStep(2)} />
+        <StepSummary form={form} setForm={setForm} result={result} onCalculate={handleCalculate} onComponentsChange={handleComponentsChange} onNext={() => setStep(4)} onBack={() => setStep(2)} />
       )}
       {step === 4 && (
         <StepQuotation form={form} result={result} customer={customer} jobName={jobName} onBack={() => setStep(3)} onSave={handleSave} saving={saving} />

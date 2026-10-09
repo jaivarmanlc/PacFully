@@ -50,6 +50,21 @@ export function StatusPill({ status }) {
 }
 
 export function RateConfigRow({ masterRate, overrideRate, effectiveRate, onOverrideChange, onReset, label = 'Rate (₹/kg)' }) {
+  const [draftOverride, setDraftOverride] = React.useState(overrideRate ?? '');
+
+  React.useEffect(() => {
+    setDraftOverride(overrideRate ?? '');
+  }, [overrideRate]);
+
+  const applyOverride = () => {
+    onOverrideChange?.(draftOverride === '' ? null : Number(draftOverride));
+  };
+
+  const resetOverride = () => {
+    setDraftOverride('');
+    onReset?.();
+  };
+
   return (
     <div className="rate-config">
       <div>
@@ -63,17 +78,18 @@ export function RateConfigRow({ masterRate, overrideRate, effectiveRate, onOverr
             type="number"
             min="0"
             step="any"
-            value={overrideRate ?? ''}
-            onChange={(e) => onOverrideChange?.(e.target.value === '' ? null : Number(e.target.value))}
+            value={draftOverride}
+            onChange={(e) => setDraftOverride(e.target.value)}
             placeholder="—"
           />
+          <button className="btn btn-primary btn-sm" type="button" onClick={applyOverride}>Change</button>
         </div>
       </div>
       <div>
         <span className="rate-config-label">Effective Rate</span>
         <span className="rate-val prominent orange">₹ {effectiveRate?.toFixed(2)}</span>
       </div>
-      <button className="btn btn-secondary btn-sm" onClick={onReset}>Reset to Master</button>
+      <button className="btn btn-secondary btn-sm" type="button" onClick={resetOverride}>Reset to Master</button>
     </div>
   );
 }

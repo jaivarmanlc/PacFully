@@ -79,10 +79,6 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setError('Please enter your email and password.');
-      return;
-    }
     setLoading(true);
     setError('');
 
@@ -145,12 +141,11 @@ export default function Login() {
                 Email address
               </label>
               <input
-                type="email"
+                type="text"
                 placeholder="you@company.com"
                 value={email}
                 autoFocus
                 onChange={e => { setEmail(e.target.value); setError(''); }}
-                required
                 style={{
                   height: 40, border: '1px solid #E5E9EE', borderRadius: 7,
                   padding: '0 12px', fontSize: 13, outline: 'none',
@@ -173,7 +168,6 @@ export default function Login() {
                   placeholder="Enter your password"
                   value={password}
                   onChange={e => { setPassword(e.target.value); setError(''); }}
-                  required
                   style={{
                     height: 40, width: '100%', border: '1px solid #E5E9EE', borderRadius: 7,
                     padding: '0 40px 0 12px', fontSize: 13, outline: 'none',

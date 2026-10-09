@@ -27,6 +27,7 @@ import Proforma      from './pages/Proforma.jsx';
 import Settings      from './pages/Settings.jsx';
 import Users         from './pages/Users.jsx';
 import AuditLog      from './pages/AuditLog.jsx';
+import FormulaConfig from './pages/FormulaConfig.jsx';
 
 // ── Protected route wrapper ──────────────────────────────────
 // Redirects to /login if user is not authenticated.
@@ -80,7 +81,7 @@ function AppPage({ children }) {
 
 const SNAPSHOT_GROUPS = [
   { title: 'Order', keys: ['quantity', 'margin_percent'] },
-  { title: 'Kappa Board', keys: ['kappa_material', 'kappa_thickness_mm', 'kappa_gsm_at_1mm', 'kappa_sheet_length_mm', 'kappa_sheet_width_mm', 'kappa_ups', 'kappa_wastage_percent', 'kappa_master_rate', 'kappa_override_rate'] },
+  { title: 'Base Material', keys: ['kappa_material', 'kappa_thickness_mm', 'kappa_gsm_at_1mm', 'kappa_sheet_length_mm', 'kappa_sheet_width_mm', 'kappa_ups', 'kappa_wastage_percent', 'kappa_master_rate', 'kappa_override_rate'] },
   { title: 'Wrapper', keys: ['wrapper_gsm', 'wrapper_ups', 'wrapper_sheet_length_mm', 'wrapper_sheet_width_mm', 'wrapper_wastage_percent', 'wrapper_make_ready_sheets', 'wrapper_master_rate', 'wrapper_override_rate'] },
   { title: 'Printing', keys: ['print_sheet_size', 'print_master_rate', 'print_additional_rate', 'print_override_rate'] },
   { title: 'Lamination', keys: ['lamination_type', 'lamination_sheet_length_in', 'lamination_sheet_width_in', 'lam_master_rate', 'lam_override_rate'] },
@@ -92,6 +93,8 @@ const SNAPSHOT_GROUPS = [
 ];
 
 function snapshotLabel(key) {
+  if (key.endsWith('_sheet_length_mm')) return 'Sheet Length (in)';
+  if (key.endsWith('_sheet_width_mm')) return 'Sheet Width (in)';
   return key.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 }
 
@@ -99,6 +102,7 @@ function snapshotValue(key, value) {
   if (value === null || value === undefined || value === '') return 'Not set';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') {
+    if (key.endsWith('_sheet_length_mm') || key.endsWith('_sheet_width_mm')) return `${(value / 25.4).toFixed(2)} in`;
     if (key.includes('percent')) return `${value}%`;
     if (key.includes('rate') || key.includes('cost') || key.includes('setup') || key === 'eb_value') return money(value);
     return value.toLocaleString();
@@ -226,6 +230,19 @@ function EstimateDetail() {
                             <span style={{ color: 'var(--muted)' }}>{item.label}</span><strong style={{ textAlign: 'right' }}>{item.value}</strong>
                           </div>
                         ))}
+                        {line.component_lines?.length > 0 && (
+                          <div style={{ marginTop: 10, borderTop: '1px solid var(--line-2)', paddingTop: 8 }}>
+                            <strong style={{ fontSize: 11 }}>Component + Material Cost Lines</strong>
+                            {line.component_lines.map((componentLine, index) => (
+                              <div key={`${componentLine.component_label}-${componentLine.process}-${index}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 1.5fr) 1fr auto auto', gap: 10, padding: '5px 0', fontSize: 10 }}>
+                                <span>{componentLine.component_label}</span>
+                                <span style={{ color: 'var(--muted)' }}>{componentLine.process}</span>
+                                <strong>{money(componentLine.total_cost)}</strong>
+                                <span>{Number(componentLine.weightage_percent || 0).toFixed(1)}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </details> : '—'}
                   </td>
@@ -305,6 +322,7 @@ export default function App() {
         <Route path="/settings"      element={<AppPage><Settings /></AppPage>} />
         <Route path="/users"         element={<AppPage><Users /></AppPage>} />
         <Route path="/audit-log"     element={<AppPage><AuditLog /></AppPage>} />
+        <Route path="/formulas"      element={<AppPage><FormulaConfig /></AppPage>} />
 
         {/* ── Catch-all ── */}
         <Route path="*" element={<Navigate to="/" replace />} />

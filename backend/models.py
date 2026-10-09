@@ -64,6 +64,14 @@ class MasterConfiguration(Base):
     updated_at = Column(DateTime, default=now, onupdate=now)
 
 
+class FormulaConfiguration(Base):
+    __tablename__ = "formula_configuration"
+
+    id         = Column(Integer, primary_key=True)
+    formulas   = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+
 class SystemSettings(Base):
     __tablename__ = "system_settings"
 

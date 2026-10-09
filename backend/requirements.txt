@@ -10,6 +10,8 @@ python-dotenv
 
 PyMuPDF
 Pillow
+opencv-python-headless>=4.8
+pytesseract>=0.3.10
 
 jinja2
 reportlab

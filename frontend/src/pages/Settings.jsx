@@ -36,10 +36,14 @@ export default function Settings() {
 
   const handleChange = event => {
     const { name, value, type } = event.target;
-    setSettings(current => ({ ...current, [name]: type === 'number' ? Number(value) : value }));
+    setSettings(current => ({ ...current, [name]: type === 'number' && value !== '' ? Number(value) : value }));
   };
 
   const handleSave = async () => {
+    if (settings.gst_rate === '' || settings.next_estimate_number === '') {
+      setError('Enter values for GST rate and next estimate number before saving.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {

@@ -157,7 +157,7 @@ vRep.innerHTML=`<h2 class="font-bold mb-4">Reports</h2>
 const vMaster=mkView('master');
 vMaster.innerHTML=`<h2 class="font-bold mb-1">Master Configuration</h2><p class="text-xs text-gray-400 mb-4">Master values are the default rates. Every value is overridable at the estimate level — changes here do not affect already-finalized estimates.</p>
 <div class="grid md:grid-cols-2 gap-5">
-<div class="card p-5"><h3 class="font-bold text-sm mb-3">Kappa Board</h3>
+<div class="card p-5"><h3 class="font-bold text-sm mb-3">Base Material</h3>
  <label>Master Rate (₹/kg)</label><input id="mc_kr" type="number" value="80" oninput="MASTER.kappaRate=+this.value">
  <label class="mt-3">GSM @ 1mm (reference)</label><input id="mc_kg" type="number" value="400" oninput="MASTER.kappaGsm1=+this.value"></div>
 <div class="card p-5"><h3 class="font-bold text-sm mb-3">Wrapper Material</h3>
@@ -198,8 +198,8 @@ panel('Kappa',`<div class="grid md:grid-cols-2 gap-6">
  <div class="grid grid-cols-2 gap-3">
   <div><label>Thickness (mm)</label><input id="k_thk" type="number" value="2" oninput="calcAll()"></div>
   <div><label>GSM @ 1mm</label><input id="k_gsm1" type="number" value="400" oninput="calcAll()"></div>
-  <div><label>Sheet L (mm)</label><input id="k_L" type="number" value="710" oninput="calcAll()"></div>
-  <div><label>Sheet W (mm)</label><input id="k_W" type="number" value="1010" oninput="calcAll()"></div>
+  <div><label>Sheet L (in)</label><input id="k_L" type="number" step="any" value="27.9527559055" oninput="calcAll()"></div>
+  <div><label>Sheet W (in)</label><input id="k_W" type="number" step="any" value="39.7637795276" oninput="calcAll()"></div>
   <div><label>Ups</label><input id="k_ups" type="number" value="4" oninput="calcAll()"></div>
   <div><label>Wastage %</label><input id="k_waste" type="number" value="8" oninput="calcAll()"></div>
   <div class="col-span-2"><label>Rate ₹/kg <span class="text-gray-400 normal-case">(master 80, overridable)</span></label><input id="k_rate" type="number" value="80" oninput="calcAll()"></div>
@@ -209,15 +209,15 @@ panel('Kappa',`<div class="grid md:grid-cols-2 gap-6">
 panel('Wrapper',`<div class="grid md:grid-cols-2 gap-6"><div class="grid grid-cols-2 gap-3">
  <div><label>GSM</label><input id="w_gsm" type="number" value="128" oninput="calcAll()"></div>
  <div><label>Ups</label><input id="w_ups" type="number" value="1" oninput="calcAll()"></div>
- <div><label>Sheet L (mm)</label><input id="w_L" type="number" value="711" oninput="calcAll()"></div>
- <div><label>Sheet W (mm)</label><input id="w_W" type="number" value="1016" oninput="calcAll()"></div>
+ <div><label>Sheet L (in)</label><input id="w_L" type="number" step="any" value="28" oninput="calcAll()"></div>
+ <div><label>Sheet W (in)</label><input id="w_W" type="number" step="any" value="40" oninput="calcAll()"></div>
  <div><label>Wastage %</label><input id="w_waste" type="number" value="10" oninput="calcAll()"></div>
  <div><label>Make-ready sheets</label><input id="w_mr" type="number" value="150" oninput="calcAll()"></div>
  <div class="col-span-2"><label>Rate ₹/kg</label><input id="w_rate" type="number" value="95" oninput="calcAll()"></div>
 </div><div><div class="text-xs font-bold text-gray-400 uppercase mb-2">How was this calculated?</div><div id="w_out"></div></div></div>`);
 
 panel('Printing',`<div class="grid md:grid-cols-2 gap-6"><div class="space-y-3">
- <label>Sheet Size</label><select id="p_size" oninput="calcAll()"><option>15x20</option><option>20x28</option><option selected>28x40</option></select>
+ <label>Sheet Size (in)</label><select id="p_size" oninput="calcAll()"><option>15x20</option><option>20x28</option><option selected>28x40</option></select>
  <p class="text-xs text-gray-400">Uses <b>Final Wrapper Sheets</b> from the Wrapper module — not recalculated here.</p>
 </div><div><div class="text-xs font-bold text-gray-400 uppercase mb-2">How was this calculated?</div><div id="p_out"></div></div></div>`);
 
@@ -281,7 +281,7 @@ function setOut(id,rows){document.getElementById(id).innerHTML=rows.map(([l,v])=
 function calcAll(){
   const qty=+val('q_qty')||0;
   // KAPPA
-  const k_thk=+val('k_thk'),k_gsm1=+val('k_gsm1'),k_L=+val('k_L'),k_W=+val('k_W'),k_ups=+val('k_ups')||1,k_waste=+val('k_waste')||0,k_rate=+val('k_rate')||0;
+  const k_thk=+val('k_thk'),k_gsm1=+val('k_gsm1'),k_L=+val('k_L')*25.4,k_W=+val('k_W')*25.4,k_ups=+val('k_ups')||1,k_waste=+val('k_waste')||0,k_rate=+val('k_rate')||0;
   const k_eff=k_gsm1*k_thk, k_area=k_L*k_W/1e6, k_kgsheet=k_area*k_eff/1000;
   const k_base=Math.ceil(qty/k_ups), k_wsheets=Math.ceil(k_base*k_waste/100), k_final=k_base+k_wsheets;
   const k_totalkg=k_final*k_kgsheet, k_cost=k_totalkg*k_rate;
@@ -289,7 +289,7 @@ function calcAll(){
   setOut('k_out',[['Effective GSM','GSM@1mm × Thickness = '+k_eff.toFixed(0)],['Sheet Area (m²)',k_area.toFixed(4)],['KG / Sheet',k_kgsheet.toFixed(4)],['Base Sheets',k_base],['Wastage Sheets',k_wsheets],['Final Sheets',k_final],['Total KG',k_totalkg.toFixed(2)],['Total Cost',fmt(k_cost)],['Cost / Box',fmt(qty?k_cost/qty:0)]]);
 
   // WRAPPER
-  const w_gsm=+val('w_gsm'),w_L=+val('w_L'),w_W=+val('w_W'),w_ups=+val('w_ups')||1,w_waste=+val('w_waste')||0,w_mr=+val('w_mr')||0,w_rate=+val('w_rate')||0;
+  const w_gsm=+val('w_gsm'),w_L=+val('w_L')*25.4,w_W=+val('w_W')*25.4,w_ups=+val('w_ups')||1,w_waste=+val('w_waste')||0,w_mr=+val('w_mr')||0,w_rate=+val('w_rate')||0;
   const w_base=Math.ceil(qty/w_ups), w_wsheets=Math.ceil(w_base*w_waste/100);
   wrapperFinal=w_base+w_wsheets+w_mr;
   const w_kgsheet=w_L*w_W*w_gsm/1e6, w_totalkg=wrapperFinal*w_kgsheet, w_cost=w_totalkg*w_rate;

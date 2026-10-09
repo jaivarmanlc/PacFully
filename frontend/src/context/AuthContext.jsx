@@ -51,9 +51,9 @@ export function AuthProvider({ children }) {
       form.append('password', password);
 
       const res = await fetch(`${BASE}/auth/login`, {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    form.toString(),
+        body: form.toString(),
       });
 
       if (!res.ok) {
@@ -63,20 +63,19 @@ export function AuthProvider({ children }) {
 
       const data = await res.json();
       const userObj = {
-        id:        data.user_id,
+        id: data.user_id,
         full_name: data.full_name,
-        email:     data.email,
-        role:      data.role,
+        email: data.email,
+        role: data.role,
       };
 
       localStorage.setItem('pac_token', data.access_token);
-      localStorage.setItem('pac_user',  JSON.stringify(userObj));
+      localStorage.setItem('pac_user', JSON.stringify(userObj));
+      localStorage.removeItem('pac_testing_session');
       setToken(data.access_token);
       setUser(userObj);
-      return null; // success
-
-    } catch (e) {
-      // Network error / backend offline
+      return null;
+    } catch {
       return 'Cannot reach the server. Make sure the backend is running on port 8000.';
     }
   }, []);
@@ -100,6 +99,7 @@ export function AuthProvider({ children }) {
       };
       localStorage.setItem('pac_token', data.access_token);
       localStorage.setItem('pac_user', JSON.stringify(userObj));
+      localStorage.removeItem('pac_testing_session');
       setToken(data.access_token);
       setUser(userObj);
       return null;
@@ -115,6 +115,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem('pac_token');
     localStorage.removeItem('pac_user');
+    localStorage.removeItem('pac_testing_session');
     setToken(null);
     setUser(null);
   }, []);
