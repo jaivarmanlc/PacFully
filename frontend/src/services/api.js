@@ -24,6 +24,9 @@ async function request(method, path, body, responseType = 'json') {
     if (localStorage.getItem('pac_testing_session') === 'true') {
       throw new Error('Backend authorization is unavailable in testing mode');
     }
+    if (import.meta.env.PROD) {
+      throw new Error('The public workspace API is not ready. Please try again after the deployment finishes.');
+    }
     // Token expired or invalid — clear session and reload to /login
     localStorage.removeItem('pac_token');
     localStorage.removeItem('pac_user');
