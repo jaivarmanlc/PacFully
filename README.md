@@ -167,7 +167,7 @@ Backend variables are read from the repository-root `.env` file and/or the hosti
 | Variable | Purpose |
 |---|---|
 | `ENVIRONMENT` | Set to `production` in production deployments. |
-| `PUBLIC_APP_ACCESS` | Set to `true` to open the production workspace without login. Visitors can access operational customer, estimate, and quotation records and perform those workflows. Settings, audit logs, user management, and configuration edits remain admin-only. |
+| `PUBLIC_APP_ACCESS` | Set to `true` to open the production workspace without login. Visitors can access operational customer, estimate, and quotation records and edit master rates. Formula edits, system settings, audit logs, and user management remain admin-only. |
 | `SECRET_KEY` | JWT signing key; required in production. Development creates and persists a local key under `data/`. |
 | `INITIAL_ADMIN_EMAIL` | Email for the first administrator when the users table is empty. Required on initial production startup. |
 | `INITIAL_ADMIN_PASSWORD` | Initial administrator password; must be at least 12 characters. Required on initial production startup. |

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Save, AlertCircle, RotateCcw } from 'lucide-react';
-import { useAuth } from '../context/AuthContext.jsx';
+import { PUBLIC_ACCESS, useAuth } from '../context/AuthContext.jsx';
 import { getMasterConfig, saveMasterConfig } from '../services/api';
 
 const MATERIAL_RATES = [
@@ -109,7 +109,7 @@ function RateTable({ rows, onChange, searchTerm, readOnly = false }) {
 
 export default function MasterConfig() {
   const { user } = useAuth();
-  const canEdit = user?.role === 'Administrator';
+  const canEdit = user?.role === 'Administrator' || (PUBLIC_ACCESS && user?.role === 'Public');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => tabForQuery(searchParams.get('q')));

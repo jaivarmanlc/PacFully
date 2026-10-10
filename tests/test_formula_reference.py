@@ -178,11 +178,14 @@ def test_master_configuration_permissions_are_role_scoped():
     assert view_guard(SimpleNamespace(role="Estimator")).role == "Estimator"
     assert view_guard(SimpleNamespace(role="Public")).role == "Public"
     assert edit_guard(SimpleNamespace(role="Administrator")).role == "Administrator"
+    rates_guard = _require_config_permission("MASTER_RATES_EDIT")
+    assert rates_guard(SimpleNamespace(role="Administrator")).role == "Administrator"
+    assert rates_guard(SimpleNamespace(role="Public")).role == "Public"
     with pytest.raises(HTTPException) as error:
         edit_guard(SimpleNamespace(role="Estimator"))
     assert error.value.status_code == 403
     with pytest.raises(HTTPException) as error:
-        edit_guard(SimpleNamespace(role="Public"))
+        rates_guard(SimpleNamespace(role="Estimator"))
     assert error.value.status_code == 403
 
 
@@ -196,7 +199,9 @@ def test_public_access_keeps_administrator_routes_protected(monkeypatch):
 
     assert client.get("/api/master-config").status_code == 200
     assert client.get("/api/formulas").status_code == 200
-    assert client.put("/api/master-config", json={"rates": {}}).status_code == 403
+    updated = client.put("/api/master-config", json={"rates": {"kappa_rate_per_kg": 82}})
+    assert updated.status_code == 200
+    assert updated.json()["rates"]["kappa_rate_per_kg"] == 82
     assert client.put("/api/formulas", json={"formulas": {}}).status_code == 403
     assert client.get("/api/settings").status_code == 401
     assert client.put("/api/settings", json={}).status_code == 401

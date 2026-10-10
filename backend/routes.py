@@ -34,10 +34,10 @@ from quotation.pdf_generator import generate_quotation_pdf, generate_proforma_pd
 router = APIRouter()
 
 MASTER_CONFIG_PERMISSIONS = {
-    "Administrator": {"MASTER_CONFIG_VIEW", "MASTER_CONFIG_EDIT"},
+    "Administrator": {"MASTER_CONFIG_VIEW", "MASTER_CONFIG_EDIT", "MASTER_RATES_EDIT"},
     "Estimator": {"MASTER_CONFIG_VIEW"},
     "Viewer": {"MASTER_CONFIG_VIEW"},
-    "Public": {"MASTER_CONFIG_VIEW"},
+    "Public": {"MASTER_CONFIG_VIEW", "MASTER_RATES_EDIT"},
 }
 
 def _configuration_version(value):
@@ -1029,7 +1029,7 @@ def get_master_config(db: Session = Depends(get_db), current=Depends(_require_co
     return {"rates": rates, "version": _configuration_version(rates)}
 
 @router.put("/master-config")
-def update_master_config(body: MasterRatesUpdate, db: Session = Depends(get_db), current=Depends(_require_config_permission("MASTER_CONFIG_EDIT"))):
+def update_master_config(body: MasterRatesUpdate, db: Session = Depends(get_db), current=Depends(_require_config_permission("MASTER_RATES_EDIT"))):
     unknown = set(body.rates) - set(MASTER_RATE_DEFAULTS)
     if unknown:
         raise HTTPException(422, f"Unknown master rates: {', '.join(sorted(unknown))}")
