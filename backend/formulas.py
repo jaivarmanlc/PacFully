@@ -5,58 +5,97 @@ import operator
 
 FORMULA_DEFINITIONS = {
     "kappa_effective_gsm": {
-        "group": "Base Material", "title": "Effective GSM",
+        "group": "Base Material", "title": "Effective GSM", "visible": False,
         "description": "GSM at 1 mm multiplied by material thickness.",
         "default_expression": "gsm_at_1mm * thickness_mm",
         "variables": {"gsm_at_1mm": "Material GSM at 1 mm", "thickness_mm": "Material thickness in millimetres"},
     },
+    "kappa_complete_total_cost": {
+        "group": "Base Material", "title": "Complete Base Material Total Cost",
+        "description": "Calculates the full Base Material cost in one expression: required sheets including wastage, sheet area, effective GSM, kilograms, and material rate.",
+        "default_expression": "(ceil(quantity / ups) + ceil(ceil(quantity / ups) * wastage_percent / 100)) * (sheet_length_mm / 25.4) * (sheet_width_mm / 25.4) * 0.00064516 * (gsm_at_1mm * thickness_mm) / 1000 * rate_per_kg",
+        "variables": {
+            "quantity": "Order quantity",
+            "ups": "Units produced per sheet",
+            "wastage_percent": "Wastage percentage",
+            "sheet_length_mm": "Sheet length in millimetres",
+            "sheet_width_mm": "Sheet width in millimetres",
+            "gsm_at_1mm": "Material GSM at 1 mm",
+            "thickness_mm": "Material thickness in millimetres",
+            "rate_per_kg": "Effective rate per kilogram",
+        },
+    },
     "kappa_sheet_area": {
-        "group": "Base Material", "title": "Sheet Area",
+        "group": "Insert", "title": "Sheet Area",
         "description": "Sheet dimensions in millimetres are converted to inches, then to square metres using the formula reference conversion factor.",
         "default_expression": "sheet_length_mm / 25.4 * sheet_width_mm / 25.4 * 0.00064516",
         "variables": {"sheet_length_mm": "Sheet length in millimetres", "sheet_width_mm": "Sheet width in millimetres"},
     },
     "kappa_kg_per_sheet": {
-        "group": "Base Material", "title": "KG per Sheet",
+        "group": "Insert", "title": "KG per Sheet",
         "description": "Sheet area multiplied by effective GSM.",
         "default_expression": "sheet_area_m2 * effective_gsm / 1000",
         "variables": {"sheet_area_m2": "Sheet area in square metres", "effective_gsm": "Effective GSM"},
     },
     "kappa_base_sheets": {
-        "group": "Base Material", "title": "Base Sheets",
+        "group": "Insert", "title": "Base Sheets",
         "description": "Order quantity divided by sheets per box, rounded up.",
         "default_expression": "ceil(quantity / ups)",
         "variables": {"quantity": "Order quantity", "ups": "Units produced per sheet"},
     },
     "kappa_wastage_sheets": {
-        "group": "Base Material", "title": "Wastage Sheets",
+        "group": "Insert", "title": "Wastage Sheets",
         "description": "Base sheets multiplied by wastage percentage, rounded up.",
         "default_expression": "ceil(base_sheets * wastage_percent / 100)",
         "variables": {"base_sheets": "Base sheet count", "wastage_percent": "Wastage percentage"},
     },
     "kappa_final_sheets": {
-        "group": "Base Material", "title": "Final Sheets",
+        "group": "Insert", "title": "Final Sheets",
         "description": "Base sheets plus wastage sheets.",
         "default_expression": "base_sheets + wastage_sheets",
         "variables": {"base_sheets": "Base sheet count", "wastage_sheets": "Wastage sheet count"},
     },
     "kappa_total_kg": {
-        "group": "Base Material", "title": "Total KG",
+        "group": "Insert", "title": "Total KG",
         "description": "Final sheets multiplied by kilograms per sheet.",
         "default_expression": "final_sheets * kg_per_sheet",
         "variables": {"final_sheets": "Final sheet count", "kg_per_sheet": "Kilograms per sheet"},
     },
     "kappa_total_cost": {
-        "group": "Base Material", "title": "Total Cost",
+        "group": "Insert", "title": "Total Cost",
         "description": "Material weight multiplied by the effective rate.",
         "default_expression": "total_kg * rate_per_kg",
         "variables": {"total_kg": "Total material weight in kilograms", "rate_per_kg": "Effective rate per kilogram"},
     },
     "kappa_per_sheet": {
-        "group": "Base Material", "title": "Per Sheet Cost",
+        "group": "Insert", "title": "Per Sheet Cost",
         "description": "Weight per sheet multiplied by the effective rate.",
         "default_expression": "kg_per_sheet * rate_per_kg",
         "variables": {"kg_per_sheet": "Kilograms per sheet", "rate_per_kg": "Effective rate per kilogram"},
+    },
+    "insert_complete_total_cost": {
+        "group": "Insert", "title": "Complete Insert Total Cost",
+        "description": "One formula for board inserts and foam inserts. pricing_method: 0 board, 1 thickness-based, 2 fixed per insert, 3 per kg.",
+        "default_expression": "(ceil(quantity / ups) + ceil(ceil(quantity / ups) * wastage_percent / 100)) * (sheet_length_mm / 25.4) * (sheet_width_mm / 25.4) * 0.00064516 * gsm / 1000 * rate_per_kg if pricing_method == 0 else rate_per_10mm * thickness_mm / 10 * pieces_per_box * quantity if pricing_method == 1 else rate_per_piece * pieces_per_box * quantity if pricing_method == 2 else weight_g_per_piece / 1000 * rate_per_kg * pieces_per_box * quantity",
+        "variables": {"pricing_method": "0 board, 1 thickness-based foam, 2 fixed-rate foam, 3 weight-based foam", "quantity": "Order quantity", "ups": "Units produced per sheet", "wastage_percent": "Wastage percentage", "sheet_length_mm": "Sheet length in millimetres", "sheet_width_mm": "Sheet width in millimetres", "gsm": "Insert GSM", "rate_per_kg": "Effective rate per kilogram", "rate_per_10mm": "Foam rate per 10 mm", "thickness_mm": "Foam thickness in millimetres", "pieces_per_box": "Insert pieces per box", "rate_per_piece": "Fixed cost per insert", "weight_g_per_piece": "Insert weight in grams"},
+    },
+    "foam_insert_thickness_total_cost": {
+        "group": "Insert", "title": "Foam Insert Thickness-based Total Cost",
+        "description": "Configured cost per 10 mm scaled by insert thickness, quantity per box, and order quantity.",
+        "default_expression": "rate_per_10mm * thickness_mm / 10 * pieces_per_box * quantity",
+        "variables": {"rate_per_10mm": "Configured cost per 10 mm", "thickness_mm": "Insert thickness in millimetres", "pieces_per_box": "Insert pieces per finished box", "quantity": "Order quantity"},
+    },
+    "foam_insert_fixed_total_cost": {
+        "group": "Insert", "title": "Foam Insert Fixed-rate Total Cost",
+        "description": "Configured cost per insert multiplied by inserts per box and order quantity.",
+        "default_expression": "rate_per_piece * pieces_per_box * quantity",
+        "variables": {"rate_per_piece": "Configured cost per insert", "pieces_per_box": "Insert pieces per finished box", "quantity": "Order quantity"},
+    },
+    "foam_insert_weight_total_cost": {
+        "group": "Insert", "title": "Foam Insert Weight-based Total Cost",
+        "description": "Insert weight in grams converted to kilograms, multiplied by the rate per kilogram, inserts per box, and order quantity.",
+        "default_expression": "weight_g_per_piece / 1000 * rate_per_kg * pieces_per_box * quantity",
+        "variables": {"weight_g_per_piece": "Insert weight in grams", "rate_per_kg": "Configured rate per kilogram", "pieces_per_box": "Insert pieces per finished box", "quantity": "Order quantity"},
     },
     "wrapper_total_cost": {
         "group": "Wrapper", "title": "Total Cost",
@@ -100,9 +139,21 @@ FORMULA_DEFINITIONS = {
         "default_expression": "kg_per_sheet * rate_per_kg",
         "variables": {"kg_per_sheet": "Kilograms per sheet", "rate_per_kg": "Effective rate per kilogram"},
     },
+    "wrapper_complete_total_cost": {
+        "group": "Wrapper", "title": "Complete Wrapper Total Cost",
+        "description": "One formula for base sheets, wastage, make-ready sheets, sheet weight, and the effective rate.",
+        "default_expression": "(ceil(quantity / ups) + ceil(ceil(quantity / ups) * wastage_percent / 100) + make_ready_sheets) * sheet_length_mm * sheet_width_mm * gsm / 1000000000 * rate_per_kg",
+        "variables": {"quantity": "Order quantity", "ups": "Units produced per sheet", "wastage_percent": "Wastage percentage", "make_ready_sheets": "Make-ready sheet count", "sheet_length_mm": "Sheet length in millimetres", "sheet_width_mm": "Sheet width in millimetres", "gsm": "Wrapper GSM", "rate_per_kg": "Effective rate per kilogram"},
+    },
     "printing_total_cost": {
         "group": "Printing", "title": "Total Cost",
         "description": "First-tier rate plus any additional-sheet charges.",
+        "default_expression": "first_rate if input_sheets <= 1000 else first_rate + (input_sheets - 1000) * additional_rate",
+        "variables": {"first_rate": "Rate for the first 1,000 sheets", "input_sheets": "Number of wrapper sheets", "additional_rate": "Rate per sheet after the first 1,000"},
+    },
+    "printing_complete_total_cost": {
+        "group": "Printing", "title": "Complete Printing Total Cost",
+        "description": "First-tier rate plus additional-sheet charges above 1,000 sheets.",
         "default_expression": "first_rate if input_sheets <= 1000 else first_rate + (input_sheets - 1000) * additional_rate",
         "variables": {"first_rate": "Rate for the first 1,000 sheets", "input_sheets": "Number of wrapper sheets", "additional_rate": "Rate per sheet after the first 1,000"},
     },
@@ -117,6 +168,12 @@ FORMULA_DEFINITIONS = {
         "description": "Cost per sheet multiplied by wrapper sheets.",
         "default_expression": "cost_per_sheet * wrapper_final_sheets",
         "variables": {"cost_per_sheet": "Lamination cost per sheet", "wrapper_final_sheets": "Final wrapper sheet count"},
+    },
+    "lamination_complete_total_cost": {
+        "group": "Lamination", "title": "Complete Lamination Total Cost",
+        "description": "Sheet area multiplied by the selected rate per 100 square inches and processed sheet count.",
+        "default_expression": "sheet_length_in * sheet_width_in * rate_per_100_sq_in / 100 * input_sheets",
+        "variables": {"sheet_length_in": "Sheet length in inches", "sheet_width_in": "Sheet width in inches", "rate_per_100_sq_in": "Rate per 100 square inches", "input_sheets": "Number of sheets processed"},
     },
     "lamination_per_sheet": {
         "group": "Lamination", "title": "Per Sheet Cost",
@@ -141,6 +198,30 @@ FORMULA_DEFINITIONS = {
         "description": "Glue weight per box multiplied by rate and order quantity.",
         "default_expression": "kg_per_box * rate_per_kg * quantity",
         "variables": {"kg_per_box": "Glue kilograms per box", "rate_per_kg": "Glue rate per kilogram", "quantity": "Order quantity"},
+    },
+    "punching_complete_total_cost": {
+        "group": "Punching", "title": "Complete Punching Total Cost",
+        "description": "Uses final wrapper sheets for Wrapper material, otherwise order quantity, then applies production and setup hours.",
+        "default_expression": "((wrapper_final_sheets if is_wrapper else quantity) / speed + setup_hours) * machine_rate",
+        "variables": {"wrapper_final_sheets": "Final wrapper sheet count", "is_wrapper": "Whether the material is Wrapper", "quantity": "Order quantity", "speed": "Machine sheets per hour", "setup_hours": "Setup hours", "machine_rate": "Machine rate per hour"},
+    },
+    "embellishments_complete_total_cost": {
+        "group": "Embellishments", "title": "Complete Embellishments Total Cost",
+        "description": "One formula for legacy area pricing and routed Foiling, surface-finishing, and direct per-box processes. pricing_method: 0 legacy, 1 Foiling, 2 surface finishing, 3 direct per-box.",
+        "default_expression": "max(area_sq_in * rate_per_sq_in + setup_cost, minimum_cost) if pricing_method == 0 else max(area_sq_in * rate_per_100_sq_in / 100, minimum_cost) * quantity if pricing_method == 1 else sheet_length_in * sheet_width_in * rate_per_100_sq_in / 100 * input_sheets if pricing_method == 2 else rate_per_box * quantity",
+        "variables": {"pricing_method": "0 legacy area, 1 Foiling, 2 surface finishing, 3 direct per-box", "area_sq_in": "Component area in square inches", "rate_per_sq_in": "Legacy rate per square inch", "setup_cost": "Legacy setup cost", "minimum_cost": "Minimum cost per box or tool minimum", "rate_per_100_sq_in": "Rate per 100 square inches", "quantity": "Order quantity", "sheet_length_in": "Sheet length in inches", "sheet_width_in": "Sheet width in inches", "input_sheets": "Number of sheets processed", "rate_per_box": "Direct cost per box"},
+    },
+    "tooling_complete_total_cost": {
+        "group": "Tooling / Dies", "title": "Complete Tooling / Die Total Cost",
+        "description": "One formula for fixed Punching Die rates and area-based Emboss/Deboss or Foil Stamp dies. pricing_method: 0 fixed die rate, 1 area-based die.",
+        "default_expression": "fixed_die_rate if pricing_method == 0 else area_sq_cm * rate_per_sq_cm",
+        "variables": {"pricing_method": "0 fixed Punching Die rate, 1 area-based die", "fixed_die_rate": "Configured nearest-size Punching Die rate", "area_sq_cm": "Die area in square centimetres", "rate_per_sq_cm": "Configured rate per square centimetre"},
+    },
+    "conversion_complete_total_cost": {
+        "group": "Conversion", "title": "Complete Conversion Total Cost",
+        "description": "One formula for Contract, Automatic Kappa, Semi Automatic Kappa, and side-pasting paths. pricing_method: 0 contract, 1 automatic, 2 semi automatic, 3 side pasting.",
+        "default_expression": "contract_rate_per_box * quantity if pricing_method == 0 else (quantity / automatic_boxes_per_hour * 2) * automatic_machine_rate + automatic_setup_hours * 2 * automatic_setup_rate if pricing_method == 1 else semi_workers * (monthly_salary / (working_days * hours_per_day)) * (quantity / semi_boxes_per_hour * 2) if pricing_method == 2 else side_pasting_rate_per_box * quantity",
+        "variables": {"pricing_method": "0 contract, 1 automatic, 2 semi automatic, 3 side pasting", "quantity": "Order quantity", "contract_rate_per_box": "Contract rate per box", "automatic_boxes_per_hour": "Automatic boxes per hour", "automatic_machine_rate": "Automatic machine rate per hour", "automatic_setup_hours": "Automatic setup hours", "automatic_setup_rate": "Automatic setup rate per hour", "semi_workers": "Semi-automatic labour count", "monthly_salary": "Monthly salary per worker", "working_days": "Working days per month", "hours_per_day": "Working hours per day", "semi_boxes_per_hour": "Semi-automatic boxes per hour", "side_pasting_rate_per_box": "Side-pasting rate per box"},
     },
     "module_cost_per_box": {
         "group": "Estimate Totals", "title": "Module Cost / Box",
@@ -221,8 +302,8 @@ FORMULA_DEFINITIONS = {
         "variables": {"quantity_per_box": "Accessory quantity per box", "unit_cost": "Accessory unit cost", "quantity": "Order quantity"},
     },
     "conversion_total_cost": {
-        "group": "Conversion", "title": "Total Cost",
-        "description": "Machine, labour, and setup cost. Conversion remains configuration-required until confirmed.",
+        "group": "Conversion (Legacy)", "title": "Legacy Generic Total Cost (Unused)", "visible": False,
+        "description": "Retained for saved configuration compatibility. Active conversion calculations use the method-specific formulas below.",
         "default_expression": "machine_rate * machine_hours + labour_rate * labour_hours + setup_cost",
         "variables": {"machine_rate": "Machine rate", "machine_hours": "Machine hours", "labour_rate": "Labour rate", "labour_hours": "Labour hours", "setup_cost": "Setup cost"},
     },
@@ -306,11 +387,39 @@ FORMULA_DEFINITIONS = {
     },
     "quotation_grand_total": {
         "group": "Quotation / Proforma", "title": "Grand Total",
+        "visible": False,
         "description": "Subtotal plus GST amount.",
         "default_expression": "subtotal + gst_amount",
         "variables": {"subtotal": "Document subtotal", "gst_amount": "Document GST amount"},
     },
+    "quotation_complete_grand_total": {
+        "group": "Quotation / Proforma", "title": "Complete Quotation / Proforma Grand Total",
+        "description": "Calculates document subtotal, GST, and grand total in one formula.",
+        "default_expression": "unit_price * quantity * (1 + gst_percent / 100)",
+        "variables": {"unit_price": "Document unit price", "quantity": "Document order quantity", "gst_percent": "GST percentage"},
+    },
 }
+
+SINGLE_MODULE_FORMULA_KEYS = {
+    "Base Material": "kappa_complete_total_cost",
+    "Insert": "insert_complete_total_cost",
+    "Wrapper": "wrapper_complete_total_cost",
+    "Printing": "printing_complete_total_cost",
+    "Lamination": "lamination_complete_total_cost",
+    "Glue": "glue_total_cost",
+    "Punching": "punching_complete_total_cost",
+    "Embellishments": "embellishments_complete_total_cost",
+    "Tooling / Dies": "tooling_complete_total_cost",
+    "Accessories": "accessories_total_cost",
+    "Conversion": "conversion_complete_total_cost",
+    "Estimate Totals": "estimate_total_cost",
+    "Quotation / Proforma": "quotation_complete_grand_total",
+}
+
+for formula_key, definition in FORMULA_DEFINITIONS.items():
+    group = definition["group"]
+    if group in SINGLE_MODULE_FORMULA_KEYS:
+        definition["visible"] = formula_key == SINGLE_MODULE_FORMULA_KEYS[group]
 
 DEFAULT_FORMULAS = {key: item["default_expression"] for key, item in FORMULA_DEFINITIONS.items()}
 

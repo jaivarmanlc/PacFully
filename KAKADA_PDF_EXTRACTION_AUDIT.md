@@ -1,9 +1,9 @@
 # Kakada PDF Extraction Audit
 
-**Audited:** 2026-10-07  
+**Verification updated:** 2026-10-20
 **Input:** `Kakada_Ramprasad_Premium Sweets_kappa_Ups Plan2.pdf`  
 **Method:** Real PDF upload through `POST /api/layout/extract`; native PyMuPDF text extraction.  
-**Result:** Project data and all four component records extracted. The 18 drawing dimensions are recovered from page 1. Unitless Duplex sheet dimensions and the ambiguous `glass` finish remain confirmation-required; they are not guessed.
+**Result:** Project data and all four component records extracted. The 18 drawing dimensions are recovered from page 1. Extraction retains the Duplex `30x20` unit as null and the ambiguous `glass` finish as unconfirmed; the user later confirmed inches and Gloss for costing.
 
 This PDF-specific audit records the current extraction behavior. The existing general `PROJECT_PROCESS_DATA.md` was left unchanged.
 
@@ -61,15 +61,16 @@ They are preserved as drawing dimensions; the system does not assign them to com
 
 ## 5. Confirmation Items
 
-- **Duplex sheet unit:** The PDF says `30x20` without a unit. The Insert costing row is blocked until the unit is confirmed.
-- **Duplex lamination finish:** The raw PDF says `Yes/glass`. `glass` is not safely equivalent to Gloss, so the Insert lamination row is blocked until clarified.
-- **Printing method and colour:** The PDF marks Printing YES but does not give Offset/Digital or a colour configuration. The estimator's displayed defaults are not PDF-extracted values.
-- **Lamination method:** WR-01 finish `matt` is normalized to Matte, but the PDF does not specify the lamination method. The costing method remains a reviewable estimator input.
-- **Rates, wastage, and make-ready:** These are estimator/master settings, not values from this PDF. Verify them before issuing a quote.
+- **Duplex sheet unit:** The PDF says `30x20` without a unit. The user confirmed inches, so the costing run used 762 x 508 mm. The extractor still leaves unit null until a user enters that confirmation.
+- **Duplex lamination finish:** The raw PDF says `Yes/glass`. The user confirmed Gloss; the extractor does not make this normalization itself.
+- **Printing method and colour:** The PDF marks Printing YES but does not give Offset/Digital or a colour configuration. The user requested an editable colour field; the estimator now allows presets or custom text. The client method and colour remain to be entered.
+- **Lamination method:** WR-01 finish `matt` is normalized to Matte, but the PDF does not specify the lamination method. The method remains unselected pending client confirmation.
+- **Wastage and rates:** The user confirmed 10% Kappa/Wrapper wastage and accepted current saved master rates. Wastage is editable in Master Configuration and per estimate/component. Updates affect new/recalculated estimates; saved estimates retain their configuration snapshots.
 
 ## 6. Verification
 
 - Live API upload returned HTTP 200 with 4 components, quantity 5000, finished size 208 x 148 x 36 mm, and 18 dimensions.
 - The current workspace contains Plan2 only; the optional test for the older Plan filename is skipped when that file is absent.
-- Full backend suite: 40 passed, 1 skipped.
+- Focused formula/component tests: 55 passed, 1 skipped.
 - Frontend production build: passed.
+- No estimate, draft, quotation, or database configuration was created or changed during verification.

@@ -14,7 +14,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-export const PUBLIC_ACCESS = import.meta.env.PROD;
+export const PUBLIC_ACCESS = true;
 const PUBLIC_USER = { id: 'public', full_name: 'Public Visitor', email: '', role: 'Public' };
 
 const AuthContext = createContext(null);

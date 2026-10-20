@@ -33,7 +33,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
 PUBLIC_APP_ACCESS = os.getenv(
     "PUBLIC_APP_ACCESS",
-    "true" if ENVIRONMENT == "production" else "false",
+    "true",
 ).strip().lower() in {"1", "true", "yes", "on"}
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:

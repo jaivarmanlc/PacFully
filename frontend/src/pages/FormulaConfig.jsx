@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, RotateCcw, Save } from 'lucide-react';
-import { useAuth } from '../context/AuthContext.jsx';
+import { PUBLIC_ACCESS, useAuth } from '../context/AuthContext.jsx';
 import { getFormulaConfig, saveFormulaConfig } from '../services/api.js';
 
 export default function FormulaConfig() {
   const { user } = useAuth();
   const isLoggedIn = Boolean(user);
-  const canEdit = user?.role === 'Administrator';
+  const canEdit = user?.role === 'Administrator' || (PUBLIC_ACCESS && user?.role === 'Public');
   const [formulaRows, setFormulaRows] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
@@ -69,7 +69,13 @@ export default function FormulaConfig() {
     );
   }
 
-  const groups = [...new Set(formulaRows.map(([, definition]) => definition.group))];
+  const formulasByGroup = formulaRows.reduce((groups, row) => {
+    const [key, definition] = row;
+    if (definition.visible === false) return groups;
+    const group = definition.group || 'Other';
+    groups[group] = [...(groups[group] || []), [key, definition]];
+    return groups;
+  }, {});
 
   return (
     <div className="page-content">
@@ -98,14 +104,15 @@ export default function FormulaConfig() {
         </div>
       ) : (
         <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-          {groups.map(group => (
-            <section key={group} style={{ padding: 20, borderBottom: '1px solid var(--line)' }}>
-              <h2 style={{ marginBottom: 14 }}>{group}</h2>
-              {formulaRows.filter(([, definition]) => definition.group === group).map(([key, definition]) => (
+          {Object.entries(formulasByGroup).map(([group, formulas]) => (
+            <section key={group} aria-labelledby={`formula-group-${group.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`} style={{ padding: 20, borderBottom: '1px solid var(--line)' }}>
+              <h2 id={`formula-group-${group.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`} style={{ marginBottom: 4 }}>{group}</h2>
+              <p className="panel-sub" style={{ margin: '0 0 14px' }}>{formulas.length} formula{formulas.length === 1 ? '' : 's'} · Edit this module’s formulas together.</p>
+              {formulas.map(([key, definition]) => (
                 <div key={key} className="form-grid-2" style={{ padding: '12px 0', borderTop: '1px solid var(--line-2)', alignItems: 'start' }}>
                   <div>
                     <label className="form-label">{definition.title}</label>
-                    <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 8 }}>{definition.description}</div>
+                    <div style={{ color: 'var(--muted)', fontSize: 12, margin: '6px 0 8px' }}>{definition.description}</div>
                     <div style={{ color: 'var(--muted-2)', fontSize: 11, lineHeight: 1.7 }}>
                       {Object.entries(definition.variables).map(([name, description]) => (
                         <div key={name}><code>{name}</code>: {description}</div>

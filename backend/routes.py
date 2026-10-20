@@ -37,7 +37,7 @@ MASTER_CONFIG_PERMISSIONS = {
     "Administrator": {"MASTER_CONFIG_VIEW", "MASTER_CONFIG_EDIT", "MASTER_RATES_EDIT"},
     "Estimator": {"MASTER_CONFIG_VIEW"},
     "Viewer": {"MASTER_CONFIG_VIEW"},
-    "Public": {"MASTER_CONFIG_VIEW", "MASTER_RATES_EDIT"},
+    "Public": {"MASTER_CONFIG_VIEW", "MASTER_RATES_EDIT", "MASTER_CONFIG_EDIT"},
 }
 
 def _configuration_version(value):
@@ -77,6 +77,9 @@ PUNCHING_RATES = {
     "Foam/EVA/EPE":{"speed": 500.0, "setup_hours": 0.5},
 }
 MASTER_RATE_DEFAULTS = {
+    "default_margin_percent": 20.0,
+    "kappa_wastage_percent": 10.0,
+    "wrapper_wastage_percent": 10.0,
     "kappa_rate_per_kg": 80.0,
     "wrapper_rate_per_kg": 95.0,
     "fbb_rate_per_kg": 88.0,
@@ -130,6 +133,9 @@ MASTER_RATE_DEFAULTS = {
     "conversion_contract_rate_per_box": 3.0,
     "foiling_rate_per_100_sq_in": 3.0,
     "spot_uv_rate_per_100_sq_in": 1.0,
+    "foam_insert_rate_per_10mm": 750.0,
+    "foam_insert_fixed_rate_per_piece": 0.0,
+    "foam_insert_rate_per_kg": 0.0,
     "embossing_cost_per_box": 1.0,
     "debossing_cost_per_box": 1.0,
     "punching_die_15x20": 1500.0,
@@ -191,10 +197,21 @@ class EstimateInput(BaseModel):
     kappa_sheet_length_mm:float = Field(default=710, gt=0)
     kappa_sheet_width_mm: float = Field(default=1010, gt=0)
     kappa_ups:            int   = Field(default=4, gt=0)
-    kappa_wastage_percent:float = Field(default=8, ge=0)
+    kappa_wastage_percent:float = Field(default=10, ge=0)
     kappa_rate_per_kg:    float = Field(default=80, ge=0)
     fbb_rate_per_kg:      float = Field(default=88, ge=0)
     duplex_board_rate_per_kg: float = Field(default=72, ge=0)
+    insert_gsm: float | None = Field(default=None, ge=0)
+    insert_ups: int | None = Field(default=None, gt=0)
+    insert_sheet_length_mm: float | None = Field(default=None, gt=0)
+    insert_sheet_width_mm: float | None = Field(default=None, gt=0)
+    insert_pricing_method: str | None = None
+    insert_thickness_mm: float | None = Field(default=None, gt=0)
+    insert_quantity_per_box: float | None = Field(default=None, gt=0)
+    insert_weight_g_per_piece: float | None = Field(default=None, gt=0)
+    foam_insert_rate_per_10mm: float = Field(default=750, ge=0)
+    foam_insert_fixed_rate_per_piece: float = Field(default=0, ge=0)
+    foam_insert_rate_per_kg: float = Field(default=0, ge=0)
     kappa_master_rate:    float | None = Field(default=None, ge=0)
     kappa_override_rate:  float | None = Field(default=None, ge=0)
     wrapper_gsm:               float = Field(default=128, ge=0)
@@ -219,6 +236,7 @@ class EstimateInput(BaseModel):
     lamination_sheet_width_in: float = Field(default=40, gt=0)
     lam_master_rate:           float | None = Field(default=None, ge=0)
     lam_override_rate:         float | None = Field(default=None, ge=0)
+    glue_rate_per_kg:          float = Field(default=90, ge=0)
     glue_lines: list[GlueLine] = Field(default_factory=lambda: [
         GlueLine(name="Top Wrapper", area_sq_in=620),
         GlueLine(name="Bottom Wrapper", area_sq_in=480),
@@ -241,6 +259,7 @@ class EstimateInput(BaseModel):
     conversion_labour_hours:  float = Field(default=0, ge=0)
     conversion_setup:         float = Field(default=0, ge=0)
     conversion_type: str = "Semi Automatic"
+    conversion_base_material: str = "Kappa"
     conversion_semi_boxes_per_hour: float | None = Field(default=400, gt=0)
     conversion_semi_workers: float | None = Field(default=15, ge=0)
     conversion_monthly_salary: float | None = Field(default=15000, ge=0)
@@ -338,7 +357,7 @@ class ModuleCalculationRequest(BaseModel):
     other_module_totals: list[float] | None = None
 
 class MasterRatesUpdate(BaseModel):
-    rates: dict[str, float]
+    rates: dict[str, float | None]
 
 class FormulaConfigUpdate(BaseModel):
     formulas: dict[str, str]
@@ -426,40 +445,86 @@ def _effective_rate(override_rate, master_rate, fallback_rate):
 
 def _calculate_kappa(p, formulas=DEFAULT_FORMULAS):
     qty = p.quantity
-    eff_kappa_gsm = evaluate_formula("kappa_effective_gsm", {"gsm_at_1mm": p.kappa_gsm_at_1mm, "thickness_mm": p.kappa_thickness_mm}, formulas)
-    kappa_area_m2 = evaluate_formula("kappa_sheet_area", {"sheet_length_mm": p.kappa_sheet_length_mm, "sheet_width_mm": p.kappa_sheet_width_mm}, formulas)
-    kappa_kg_sheet = evaluate_formula("kappa_kg_per_sheet", {"sheet_area_m2": kappa_area_m2, "effective_gsm": eff_kappa_gsm}, formulas)
-    kappa_base = int(evaluate_formula("kappa_base_sheets", {"quantity": qty, "ups": p.kappa_ups}, formulas))
-    kappa_waste = int(evaluate_formula("kappa_wastage_sheets", {"base_sheets": kappa_base, "wastage_percent": p.kappa_wastage_percent}, formulas))
-    kappa_final = int(evaluate_formula("kappa_final_sheets", {"base_sheets": kappa_base, "wastage_sheets": kappa_waste}, formulas))
-    kappa_kg = evaluate_formula("kappa_total_kg", {"final_sheets": kappa_final, "kg_per_sheet": kappa_kg_sheet}, formulas)
+    eff_kappa_gsm = p.kappa_gsm_at_1mm * p.kappa_thickness_mm
+    kappa_area_m2 = (p.kappa_sheet_length_mm / 25.4) * (p.kappa_sheet_width_mm / 25.4) * 0.00064516
+    kappa_kg_sheet = kappa_area_m2 * eff_kappa_gsm / 1000
+    kappa_base = ceil(qty / p.kappa_ups)
+    kappa_waste = ceil(kappa_base * p.kappa_wastage_percent / 100)
+    kappa_final = kappa_base + kappa_waste
+    kappa_kg = kappa_final * kappa_kg_sheet
     rate           = _effective_rate(p.kappa_override_rate, p.kappa_master_rate, p.kappa_rate_per_kg)
-    kappa_per_sheet_cost = evaluate_formula("kappa_per_sheet", {"kg_per_sheet": kappa_kg_sheet, "rate_per_kg": rate}, formulas)
-    kappa_total = evaluate_formula("kappa_total_cost", {"total_kg": kappa_kg, "rate_per_kg": rate}, formulas)
+    kappa_per_sheet_cost = kappa_kg_sheet * rate
+    kappa_total = evaluate_formula("kappa_complete_total_cost", {
+        "quantity": qty,
+        "ups": p.kappa_ups,
+        "wastage_percent": p.kappa_wastage_percent,
+        "sheet_length_mm": p.kappa_sheet_length_mm,
+        "sheet_width_mm": p.kappa_sheet_width_mm,
+        "gsm_at_1mm": p.kappa_gsm_at_1mm,
+        "thickness_mm": p.kappa_thickness_mm,
+        "rate_per_kg": rate,
+    }, formulas)
     line = _costing_line("Kappa", kappa_total, qty, [
         ("Effective GSM",    f"{p.kappa_gsm_at_1mm} × {p.kappa_thickness_mm} = {eff_kappa_gsm}"),
-        ("Base sheets",      kappa_base), ("Wastage sheets", kappa_waste),
-        ("Final sheets",     kappa_final), ("Total KG", f"{kappa_kg:.4f}"),
-        ("Per Sheet Cost",   f"{kappa_kg_sheet:.4f} × ₹{rate:g} = ₹{kappa_per_sheet_cost:.2f} / sheet"),
-    ], kappa_per_sheet_cost, "sheet", formulas["kappa_total_cost"], formulas)
+        ("Sheet area",       f"{p.kappa_sheet_length_mm / 25.4:g} × {p.kappa_sheet_width_mm / 25.4:g} in = {kappa_area_m2:.6f} m²"),
+        ("KG / sheet",       f"{kappa_area_m2:.6f} × {eff_kappa_gsm} / 1,000 = {kappa_kg_sheet:.6f} kg"),
+        ("Base sheets",      f"CEILING({qty} / {p.kappa_ups}) = {kappa_base}"),
+        ("Wastage sheets",   f"CEILING({kappa_base} × {p.kappa_wastage_percent}% / 100) = {kappa_waste}"),
+        ("Final sheets",     f"{kappa_base} + {kappa_waste} = {kappa_final}"),
+        ("Total KG",         f"{kappa_final} × {kappa_kg_sheet:.6f} = {kappa_kg:.4f} kg"),
+        ("Effective rate",   f"₹{rate:g} / kg"),
+        ("Per Sheet Cost",   f"{kappa_kg_sheet:.6f} × ₹{rate:g} = ₹{kappa_per_sheet_cost:.2f} / sheet"),
+        ("Total Cost",       f"{kappa_kg:.4f} × ₹{rate:g} = ₹{kappa_total:.4f}"),
+        ("Cost / Box",       f"₹{kappa_total:.4f} / {qty} = ₹{kappa_total / qty:.4f}"),
+    ], kappa_per_sheet_cost, "sheet", formulas["kappa_complete_total_cost"], formulas)
     return line
+
+def _calculate_insert(p, formulas=DEFAULT_FORMULAS):
+    qty = p.quantity
+    sheet_area_m2 = (p.insert_sheet_length_mm / 25.4) * (p.insert_sheet_width_mm / 25.4) * 0.00064516
+    kg_per_sheet = sheet_area_m2 * p.insert_gsm / 1000
+    base_sheets = ceil(qty / p.insert_ups)
+    wastage_sheets = ceil(base_sheets * p.kappa_wastage_percent / 100)
+    final_sheets = base_sheets + wastage_sheets
+    total_kg = final_sheets * kg_per_sheet
+    rate = _effective_rate(p.kappa_override_rate, p.kappa_master_rate, p.duplex_board_rate_per_kg)
+    per_sheet_cost = kg_per_sheet * rate
+    total_cost = evaluate_formula("insert_complete_total_cost", {
+        "pricing_method": 0, "quantity": qty, "ups": p.insert_ups,
+        "wastage_percent": p.kappa_wastage_percent,
+        "sheet_length_mm": p.insert_sheet_length_mm, "sheet_width_mm": p.insert_sheet_width_mm,
+        "gsm": p.insert_gsm, "rate_per_kg": rate,
+        "rate_per_10mm": 0, "thickness_mm": 0, "pieces_per_box": 0,
+        "rate_per_piece": 0, "weight_g_per_piece": 0,
+    }, formulas)
+    return _costing_line("Insert", total_cost, qty, [
+        ("Sheet size (in)", f"{p.insert_sheet_length_mm / 25.4:g} × {p.insert_sheet_width_mm / 25.4:g}"),
+        ("GSM", p.insert_gsm), ("UPS", p.insert_ups),
+        ("Base sheets", base_sheets), ("Wastage sheets", wastage_sheets),
+        ("Final sheets", final_sheets), ("Total KG", f"{total_kg:.4f}"),
+        ("Per Sheet Cost", f"{kg_per_sheet:.4f} × ₹{rate:g} = ₹{per_sheet_cost:.2f} / sheet"),
+    ], per_sheet_cost, "sheet", formulas["insert_complete_total_cost"], formulas)
 
 def _calculate_wrapper(p, formulas=DEFAULT_FORMULAS):
     qty = p.quantity
-    wrapper_base = int(evaluate_formula("wrapper_base_sheets", {"quantity": qty, "ups": p.wrapper_ups}, formulas))
-    wrapper_waste = int(evaluate_formula("wrapper_wastage_sheets", {"base_sheets": wrapper_base, "wastage_percent": p.wrapper_wastage_percent}, formulas))
-    wrapper_final = int(evaluate_formula("wrapper_final_sheets", {"base_sheets": wrapper_base, "wastage_sheets": wrapper_waste, "make_ready_sheets": p.wrapper_make_ready_sheets}, formulas))
-    wrapper_kg_sh = evaluate_formula("wrapper_kg_per_sheet", {"sheet_length_mm": p.wrapper_sheet_length_mm, "sheet_width_mm": p.wrapper_sheet_width_mm, "gsm": p.wrapper_gsm}, formulas)
-    wrapper_kg = evaluate_formula("wrapper_total_kg", {"final_sheets": wrapper_final, "kg_per_sheet": wrapper_kg_sh}, formulas)
+    wrapper_base = ceil(qty / p.wrapper_ups)
+    wrapper_waste = ceil(wrapper_base * p.wrapper_wastage_percent / 100)
+    wrapper_final = wrapper_base + wrapper_waste + p.wrapper_make_ready_sheets
+    wrapper_kg_sh = p.wrapper_sheet_length_mm * p.wrapper_sheet_width_mm * p.wrapper_gsm / 1000000000
+    wrapper_kg = wrapper_final * wrapper_kg_sh
     rate           = _effective_rate(p.wrapper_override_rate, p.wrapper_master_rate, p.wrapper_rate_per_kg)
-    wrapper_total = evaluate_formula("wrapper_total_cost", {"total_kg": wrapper_kg, "rate_per_kg": rate}, formulas)
-    wrapper_per_sheet = evaluate_formula("wrapper_per_sheet", {"kg_per_sheet": wrapper_kg_sh, "rate_per_kg": rate}, formulas)
+    wrapper_total = evaluate_formula("wrapper_complete_total_cost", {
+        "quantity": qty, "ups": p.wrapper_ups, "wastage_percent": p.wrapper_wastage_percent,
+        "make_ready_sheets": p.wrapper_make_ready_sheets, "sheet_length_mm": p.wrapper_sheet_length_mm,
+        "sheet_width_mm": p.wrapper_sheet_width_mm, "gsm": p.wrapper_gsm, "rate_per_kg": rate,
+    }, formulas)
+    wrapper_per_sheet = wrapper_kg_sh * rate
     line = _costing_line("Wrapper", wrapper_total, qty, [
         ("Base sheets",      wrapper_base), ("Wastage sheets", wrapper_waste),
         ("Make-ready",       p.wrapper_make_ready_sheets),
         ("Final sheets",     wrapper_final), ("Total KG", f"{wrapper_kg:.4f}"),
         ("Per Sheet Cost",   f"{wrapper_kg_sh:.4f} × ₹{rate:g} = ₹{wrapper_per_sheet:.2f} / sheet"),
-    ], wrapper_per_sheet, "sheet", formulas["wrapper_total_cost"], formulas)
+    ], wrapper_per_sheet, "sheet", formulas["wrapper_complete_total_cost"], formulas)
     return line, wrapper_final
 
 def _calculate_printing(p, wrapper_final, formulas=DEFAULT_FORMULAS):
@@ -469,39 +534,50 @@ def _calculate_printing(p, wrapper_final, formulas=DEFAULT_FORMULAS):
     additional_rate = getattr(p, "print_additional_rate", None)
     if additional_rate is None:
         additional_rate = pr["additional"]
-    printing_total = evaluate_formula("printing_total_cost", {"first_rate": first_rate, "input_sheets": wrapper_final, "additional_rate": additional_rate}, formulas)
-    printing_per_sheet = evaluate_formula("printing_per_sheet", {"total_cost": printing_total, "input_sheets": wrapper_final}, formulas)
+    printing_total = evaluate_formula("printing_complete_total_cost", {"first_rate": first_rate, "input_sheets": wrapper_final, "additional_rate": additional_rate}, formulas)
+    printing_per_sheet = printing_total / wrapper_final if wrapper_final else 0
     return _costing_line("Printing", printing_total, p.quantity, [
         ("Input",            f"{wrapper_final} final wrapper sheets"),
         ("Sheet tier",       p.print_sheet_size),
         ("First-tier rate",  first_rate), ("Additional rate", additional_rate),
         ("Per Sheet Cost",   f"₹{printing_total:.2f} ÷ {wrapper_final} = ₹{printing_per_sheet:.2f} / sheet"),
-    ], printing_per_sheet, "sheet", formulas["printing_total_cost"], formulas)
+    ], printing_per_sheet, "sheet", formulas["printing_complete_total_cost"], formulas)
 
 def _calculate_lamination(p, wrapper_final, formulas=DEFAULT_FORMULAS):
     configured_rate = getattr(p, "lam_master_rate", None)
     master_rate    = configured_rate if configured_rate is not None else LAMINATION_RATES.get(p.lamination_type, 1.10)
     lam_rate       = p.lam_override_rate if p.lam_override_rate is not None else master_rate
-    lam_per_sheet = evaluate_formula("lamination_per_sheet", {"sheet_length_in": p.lamination_sheet_length_in, "sheet_width_in": p.lamination_sheet_width_in, "rate_per_100_sq_in": lam_rate}, formulas)
-    lamination_total = evaluate_formula("lamination_total_cost", {"cost_per_sheet": lam_per_sheet, "wrapper_final_sheets": wrapper_final}, formulas)
+    lam_per_sheet = p.lamination_sheet_length_in * p.lamination_sheet_width_in * lam_rate / 100
+    lamination_total = evaluate_formula("lamination_complete_total_cost", {
+        "sheet_length_in": p.lamination_sheet_length_in, "sheet_width_in": p.lamination_sheet_width_in,
+        "rate_per_100_sq_in": lam_rate, "input_sheets": wrapper_final,
+    }, formulas)
     return _costing_line("Lamination", lamination_total, p.quantity, [
         ("Rate/100 sq.in",   lam_rate),
         ("Cost/sheet",       f"{p.lamination_sheet_length_in} × {p.lamination_sheet_width_in} × ₹{lam_rate:g} / 100 = ₹{lam_per_sheet:.2f}"),
         ("Input",            f"{wrapper_final} wrapper sheets"),
-    ], lam_per_sheet, "sheet", formulas["lamination_total_cost"], formulas)
+    ], lam_per_sheet, "sheet", formulas["lamination_complete_total_cost"], formulas)
 
 def _calculate_glue(p, formulas=DEFAULT_FORMULAS):
-    # Glue: weight per box × rate × quantity = total order glue cost
     component_costs = []
+    trace = [("Formula", "Area × 0.00064516 × GSM / 1000 × rate/kg × quantity")]
     for glue_line in p.glue_lines:
-        kg_per_box = evaluate_formula("glue_kg_per_box", {"area_sq_in": glue_line.area_sq_in, "gsm": glue_line.gsm}, formulas)
-        component_costs.append(evaluate_formula("glue_component_cost", {"kg_per_box": kg_per_box, "rate_per_kg": glue_line.rate_per_kg, "quantity": p.quantity}, formulas))
+        kg_per_box = glue_line.area_sq_in * 0.00064516 * glue_line.gsm / 1000
+        component_cost = kg_per_box * glue_line.rate_per_kg * p.quantity
+        component_costs.append(component_cost)
+        trace.extend([
+            (f"{glue_line.name} · Area (sq.in)", glue_line.area_sq_in),
+            (f"{glue_line.name} · GSM", glue_line.gsm),
+            (f"{glue_line.name} · Rate / kg", f"₹{glue_line.rate_per_kg:g}"),
+            (f"{glue_line.name} · KG / box", f"{kg_per_box:.6f}"),
+            (f"{glue_line.name} · Total cost", f"₹{component_cost:.4f}"),
+        ])
     glue_total = evaluate_formula("glue_total_cost", {"component_costs": component_costs}, formulas)
-    return _costing_line("Glue", glue_total, p.quantity, [
-        ("Formula",          "Area × 0.00064516 × GSM / 1000 × rate"),
-        ("Components",       len(p.glue_lines)),
-        ("Cost / Box",       f"₹{glue_total / p.quantity:.2f}"),
-    ], glue_total / p.quantity, "box", formulas["glue_total_cost"], formulas)
+    trace.extend([
+        ("Components", len(p.glue_lines)),
+        ("Cost / Box", f"₹{glue_total / p.quantity:.2f}"),
+    ])
+    return _costing_line("Glue", glue_total, p.quantity, trace, glue_total / p.quantity, "box", formulas["glue_total_cost"], formulas)
 
 def _calculate_punching(p, wrapper_final, formulas=DEFAULT_FORMULAS):
     punch          = dict(PUNCHING_RATES.get(p.punching_material, PUNCHING_RATES["Kappa"]))
@@ -512,9 +588,13 @@ def _calculate_punching(p, wrapper_final, formulas=DEFAULT_FORMULAS):
     if configured_setup is not None:
         punch["setup_hours"] = configured_setup
     is_wrapper = p.punching_material == "Wrapper"
-    punch_quantity = int(evaluate_formula("punching_input_quantity", {"wrapper_final_sheets": wrapper_final or 0, "is_wrapper": is_wrapper, "quantity": p.quantity}, formulas))
-    prod_hrs = evaluate_formula("punching_production_hours", {"input_quantity": punch_quantity, "speed": punch["speed"]}, formulas)
-    punching_total = evaluate_formula("punching_total_cost", {"production_hours": prod_hrs, "setup_hours": punch["setup_hours"], "machine_rate": p.punching_machine_rate_per_hour}, formulas)
+    punch_quantity = int((wrapper_final or 0) if is_wrapper else p.quantity)
+    prod_hrs = punch_quantity / punch["speed"]
+    punching_total = evaluate_formula("punching_complete_total_cost", {
+        "wrapper_final_sheets": wrapper_final or 0, "is_wrapper": 1 if is_wrapper else 0,
+        "quantity": p.quantity, "speed": punch["speed"], "setup_hours": punch["setup_hours"],
+        "machine_rate": p.punching_machine_rate_per_hour,
+    }, formulas)
     punch_unit = "sheet" if p.punching_material == "Wrapper" else "box"
     punch_unit_count = punch_quantity if punch_unit == "sheet" else p.quantity
     return _costing_line("Punching", punching_total, p.quantity, [
@@ -523,20 +603,26 @@ def _calculate_punching(p, wrapper_final, formulas=DEFAULT_FORMULAS):
         ("Setup hrs",        punch["setup_hours"]),
         ("Machine rate",     f"₹{p.punching_machine_rate_per_hour:.2f} / hr"),
         ("Cost / Box",       f"₹{punching_total / p.quantity:.2f}"),
-    ], evaluate_formula("punching_unit_cost", {"total_cost": punching_total, "unit_quantity": punch_unit_count}, formulas), punch_unit, formulas["punching_total_cost"], formulas)
+    ], punching_total / punch_unit_count if punch_unit_count else 0, punch_unit, formulas["punching_complete_total_cost"], formulas)
 
 def _calculate_embellishments(p, formulas=DEFAULT_FORMULAS):
-    emb_raw = evaluate_formula("embellishments_raw_cost", {"area_sq_in": p.embellishment_area_sq_in, "rate_per_sq_in": p.embellishment_rate_per_sq_in, "setup_cost": p.embellishment_setup}, formulas)
-    emb_total = evaluate_formula("embellishments_total_cost", {"raw_cost": emb_raw, "tool_cost": p.embellishment_minimum}, formulas)
+    emb_raw = p.embellishment_area_sq_in * p.embellishment_rate_per_sq_in + p.embellishment_setup
+    emb_total = evaluate_formula("embellishments_complete_total_cost", {
+        "pricing_method": 0, "area_sq_in": p.embellishment_area_sq_in,
+        "rate_per_sq_in": p.embellishment_rate_per_sq_in, "setup_cost": p.embellishment_setup,
+        "minimum_cost": p.embellishment_minimum, "rate_per_100_sq_in": 0,
+        "quantity": p.quantity, "sheet_length_in": 0, "sheet_width_in": 0,
+        "input_sheets": 0, "rate_per_box": 0,
+    }, formulas)
     return _costing_line("Embellishments", emb_total, p.quantity, [
         ("Raw cost",         f"₹{emb_raw:.2f}"),
         ("Tool Cost",        f"₹{p.embellishment_minimum:.2f}"),
         ("Applied cost",     f"₹{emb_total:.2f}"),
         ("Cost / Box",       f"₹{emb_total / p.quantity:.2f}"),
-    ], emb_total / p.quantity, "box", formulas["embellishments_total_cost"], formulas)
+    ], emb_total / p.quantity, "box", formulas["embellishments_complete_total_cost"], formulas)
 
 def _calculate_accessories(p, formulas=DEFAULT_FORMULAS):
-    accessory_costs = [evaluate_formula("accessory_component_cost", {"quantity_per_box": item.quantity_per_box, "unit_cost": item.unit_cost, "quantity": p.quantity}, formulas) for item in p.accessories]
+    accessory_costs = [item.quantity_per_box * item.unit_cost * p.quantity for item in p.accessories]
     acc_total = evaluate_formula("accessories_total_cost", {"accessory_costs": accessory_costs}, formulas)
     return _costing_line("Accessories", acc_total, p.quantity, [
         ("Formula",          "Qty/box × unit cost × order qty"),
@@ -544,12 +630,66 @@ def _calculate_accessories(p, formulas=DEFAULT_FORMULAS):
         ("Cost / Box",       f"₹{acc_total / p.quantity:.2f}"),
     ], acc_total / p.quantity, "box", formulas["accessories_total_cost"], formulas)
 
-def _calculate_conversion(p, formulas=DEFAULT_FORMULAS):
-    conv_total = evaluate_formula("conversion_total_cost", {"machine_rate": p.conversion_machine_rate, "machine_hours": p.conversion_machine_hours, "labour_rate": p.conversion_labour_rate, "labour_hours": p.conversion_labour_hours, "setup_cost": p.conversion_setup}, formulas)
-    return _costing_line("Conversion", conv_total, p.quantity, [
-        ("Status",           "CONFIGURATION REQUIRED"),
-        ("Machine+Labour+Setup", conv_total),
-    ], conv_total / p.quantity, "box", formulas["conversion_total_cost"], formulas)
+def _calculate_conversion_for_material(p, material, formulas=DEFAULT_FORMULAS):
+    material = material.strip().upper()
+    conversion_type = p.conversion_type.strip().lower()
+    is_kappa = material in {"KAPPA", "KAPPA BOARD", "BASE MATERIAL"}
+    formula_inputs = {
+        "pricing_method": -1, "quantity": p.quantity,
+        "contract_rate_per_box": 0, "automatic_boxes_per_hour": 1,
+        "automatic_machine_rate": 0, "automatic_setup_hours": 0,
+        "automatic_setup_rate": 0, "semi_workers": 0, "monthly_salary": 0,
+        "working_days": 1, "hours_per_day": 1, "semi_boxes_per_hour": 1,
+        "side_pasting_rate_per_box": 0,
+    }
+
+    if conversion_type == "contract":
+        rate = p.conversion_contract_rate_per_box
+        if rate is None:
+            return None, "Contract conversion rate per box is not configured."
+        formula_inputs.update(pricing_method=0, contract_rate_per_box=rate)
+        trace = [("Method", "Contract"), ("Rate / box", rate), ("Order quantity", p.quantity)]
+    elif conversion_type == "automatic" and is_kappa:
+        boxes_per_hour = p.conversion_automatic_boxes_per_hour
+        machine_rate = p.conversion_automatic_machine_rate
+        setup_rate = p.conversion_automatic_setup_rate
+        setup_hours = p.conversion_automatic_setup_hours
+        if any(value is None for value in (boxes_per_hour, machine_rate, setup_rate, setup_hours)):
+            return None, "Automatic Kappa conversion parameters are not configured."
+        machine_hours = p.quantity / boxes_per_hour * 2
+        formula_inputs.update(
+            pricing_method=1, automatic_boxes_per_hour=boxes_per_hour,
+            automatic_machine_rate=machine_rate, automatic_setup_hours=setup_hours,
+            automatic_setup_rate=setup_rate,
+        )
+        trace = [("Method", "Automatic"), ("Machine hours", machine_hours), ("Machine rate / hr", machine_rate), ("Setup hours", setup_hours), ("Setup rate / hr", setup_rate)]
+    elif conversion_type == "semi automatic" and is_kappa:
+        boxes_per_hour = p.conversion_semi_boxes_per_hour
+        workers = p.conversion_semi_workers
+        salary = p.conversion_monthly_salary
+        workdays = p.conversion_working_days
+        hours_per_day = p.conversion_hours_per_day
+        if any(value is None for value in (boxes_per_hour, workers, salary, workdays, hours_per_day)):
+            return None, "Semi-automatic Kappa conversion parameters are not configured."
+        machine_hours = p.quantity / boxes_per_hour * 2
+        formula_inputs.update(
+            pricing_method=2, semi_boxes_per_hour=boxes_per_hour,
+            semi_workers=workers, monthly_salary=salary,
+            working_days=workdays, hours_per_day=hours_per_day,
+        )
+        trace = [("Method", "Semi Automatic"), ("Machine hours", machine_hours), ("Workers", workers), ("Monthly salary", salary), ("Working days", workdays), ("Hours per day", hours_per_day)]
+    elif material in {"FBB", "DUPLEX", "DUPLEX BOARD", "KRAFT"} and conversion_type == "semi automatic":
+        rate = p.conversion_side_pasting_rate_per_box
+        if rate is None:
+            return None, "Side-pasting rate per box is not configured."
+        formula_inputs.update(pricing_method=3, side_pasting_rate_per_box=rate)
+        trace = [("Method", "Side Pasting"), ("Rate / box", rate), ("Order quantity", p.quantity)]
+    else:
+        return None, f"{p.conversion_type.title()} conversion is not configured for {material}."
+
+    total = evaluate_formula("conversion_complete_total_cost", formula_inputs, formulas)
+    formula = formulas["conversion_complete_total_cost"]
+    return _costing_line("Conversion", total, p.quantity, trace, total / p.quantity, "box", formula, formulas), None
 
 def _calculate_eb(p):
     return _costing_line("EB", 0, p.quantity, [
@@ -557,10 +697,10 @@ def _calculate_eb(p):
         ("Formula",          "Not defined"),
     ], 0, "box", "Not defined", DEFAULT_FORMULAS)
 
-def _run_calculation(p: EstimateInput, formulas=DEFAULT_FORMULAS) -> dict:
+def _run_calculation(p: EstimateInput, formulas=DEFAULT_FORMULAS, master_rates=None) -> dict:
     """Calculate the complete estimate in dependency order."""
     if p.components is not None:
-        return _run_component_calculation(p, formulas)
+        return _run_component_calculation(p, formulas, master_rates=master_rates)
 
     qty = p.quantity
 
@@ -572,7 +712,12 @@ def _run_calculation(p: EstimateInput, formulas=DEFAULT_FORMULAS) -> dict:
     punching_line = _calculate_punching(p, wrapper_final, formulas)
     embellishments_line = _calculate_embellishments(p, formulas)
     accessories_line = _calculate_accessories(p, formulas)
-    conversion_line = _calculate_conversion(p, formulas)
+    conversion_line, conversion_failure = _calculate_conversion_for_material(p, p.conversion_base_material, formulas)
+    if conversion_line is None:
+        conversion_line = _costing_line("Conversion", 0, p.quantity, [
+            ("Status", "CONFIGURATION REQUIRED"),
+            ("Detail", conversion_failure),
+        ], 0, "box", "Not configured", formulas)
     eb_line = _calculate_eb(p)
 
     lines = [
@@ -597,11 +742,104 @@ def _run_calculation(p: EstimateInput, formulas=DEFAULT_FORMULAS) -> dict:
         "order_value":              round(order_val, 4),
         "wrapper_final_sheets":     wrapper_final,
         "lines":                    lines,
-        "configuration_required":   ["Conversion", "EB"],
+        "configuration_required":   ["EB", *(["Conversion"] if conversion_failure else [])],
     }
 
-def _component_estimate_input(p, component, process, module):
+def _component_master_values(p, component, process, module, rates):
+    inputs = {
+        **component.process_inputs.get(module, {}),
+        **component.process_inputs.get(process, {}),
+    }
+    values = {}
+
+    def set_rate(input_key, rate_key):
+        if rate_key in rates:
+            values[input_key] = rates[rate_key]
+
+    material = component.material.strip().upper()
+    if module in {"Kappa", "Insert"}:
+        if module == "Kappa" or material not in {"EVA", "EPE", "PU"}:
+            set_rate("kappa_wastage_percent", "kappa_wastage_percent")
+            material_rate_key = (
+                "fbb_rate_per_kg" if "FBB" in material
+                else "duplex_board_rate_per_kg" if "DUPLEX" in material
+                else "kappa_rate_per_kg"
+            )
+            set_rate("kappa_rate_per_kg", material_rate_key)
+            set_rate("kappa_master_rate", material_rate_key)
+        if module == "Insert" and material in {"EVA", "EPE", "PU"}:
+            for key in ("foam_insert_rate_per_10mm", "foam_insert_fixed_rate_per_piece", "foam_insert_rate_per_kg"):
+                set_rate(key, key)
+    elif module == "Wrapper":
+        for key in ("wrapper_wastage_percent", "wrapper_make_ready_sheets"):
+            set_rate(key, key)
+        set_rate("wrapper_rate_per_kg", "wrapper_rate_per_kg")
+        set_rate("wrapper_master_rate", "wrapper_rate_per_kg")
+    elif module == "Printing":
+        sheet_size = str(inputs.get("print_sheet_size", p.print_sheet_size)).strip().lower().replace("×", "x").replace(" ", "")
+        first_key = f"print_{sheet_size}_first"
+        additional_key = f"print_{sheet_size}_additional"
+        set_rate("print_master_rate", first_key)
+        set_rate("print_additional_rate", additional_key)
+    elif module == "Lamination":
+        lamination_type = str(inputs.get("lamination_type", p.lamination_type)).strip().lower()
+        finish = str(inputs.get("lamination_finish", p.lamination_finish)).strip().lower().replace(" ", "_")
+        method_finish_key = f"lamination_rate_{lamination_type}_{finish}"
+        method_finish_rate = rates.get(method_finish_key)
+        rate_key = f"lamination_{lamination_type}"
+        effective_rate = method_finish_rate if method_finish_rate is not None and method_finish_rate > 0 else rates.get(rate_key)
+        if effective_rate is not None:
+            values["lam_master_rate"] = effective_rate
+        values["lamination_method_finish_rates"] = {
+            f"{method}_{configured_finish}": rates.get(
+                f"lamination_rate_{method}_{configured_finish}",
+                p.lamination_method_finish_rates.get(f"{method}_{configured_finish}", 0),
+            )
+            for method in ("thermal", "cold", "dry")
+            for configured_finish in ("matte", "gloss", "soft_touch", "other")
+        }
+    elif module == "Glue":
+        set_rate("glue_rate_per_kg", "glue_rate_per_kg")
+    elif module == "Punching":
+        speed_key = (
+            "punching_speed_wrapper" if "ART PAPER" in material or "WRAPPER" in material
+            else "punching_speed_fbb" if "FBB" in material
+            else "punching_speed_duplex" if "DUPLEX" in material
+            else "punching_speed_foam" if material in {"EVA", "EPE", "PU", "FOAM/EVA/EPE"}
+            else "punching_speed_kappa"
+        )
+        set_rate("punching_machine_rate_per_hour", "punching_machine_rate_per_hour")
+        set_rate("punching_speed", speed_key)
+        set_rate("punching_setup_hours", "punching_setup_hours")
+    elif module == "Embellishments":
+        for key in (
+            "embellishment_rate_per_sq_in", "embellishment_setup", "embellishment_minimum",
+            "foiling_rate_per_100_sq_in", "spot_uv_rate_per_100_sq_in",
+            "embossing_cost_per_box", "debossing_cost_per_box",
+        ):
+            set_rate(key, key)
+    elif module == "Conversion":
+        for key in (
+            "conversion_semi_boxes_per_hour", "conversion_semi_workers", "conversion_monthly_salary",
+            "conversion_working_days", "conversion_hours_per_day", "conversion_side_pasting_rate_per_box",
+            "conversion_automatic_boxes_per_hour", "conversion_automatic_machine_rate",
+            "conversion_automatic_setup_rate", "conversion_automatic_setup_hours",
+            "conversion_contract_rate_per_box",
+        ):
+            set_rate(key, key)
+    elif module == "One Time Cost":
+        for key in (
+            "punching_die_15x20", "punching_die_20x28", "punching_die_25x36",
+            "punching_die_28x40", "emboss_deboss_die_rate_per_sq_cm",
+            "foil_stamp_die_rate_per_sq_cm",
+        ):
+            set_rate(key, key)
+    return values
+
+def _component_estimate_input(p, component, process, module, master_rates=None):
     values = p.model_dump(exclude={"components"})
+    if master_rates is not None:
+        values.update(_component_master_values(p, component, process, module, master_rates))
     values.update(component.process_inputs.get(module, {}))
     values.update(component.process_inputs.get(process, {}))
     values["quantity"] = p.quantity
@@ -609,12 +847,27 @@ def _component_estimate_input(p, component, process, module):
         **component.process_inputs.get(module, {}),
         **component.process_inputs.get(process, {}),
     }
+    if module == "Lamination":
+        material = component.material.strip().upper()
+        sheet_process = (
+            "Wrapper" if "ART PAPER" in material or "WRAPPER" in material
+            else "Insert" if "DUPLEX" in material or "FBB" in material
+            else "Kappa" if "KAPPA" in material
+            else None
+        )
+        sheet_inputs = component.process_inputs.get(sheet_process, {}) if sheet_process else {}
+        for dimension, lamination_key, sheet_key in (
+            ("length", "lamination_sheet_length_in", f"{sheet_process.lower()}_sheet_length_mm" if sheet_process else ""),
+            ("width", "lamination_sheet_width_in", f"{sheet_process.lower()}_sheet_width_mm" if sheet_process else ""),
+        ):
+            if lamination_key not in row_values and sheet_inputs.get(sheet_key) is not None:
+                values[lamination_key] = sheet_inputs[sheet_key] / 25.4
     if module == "Glue" and any(key in row_values for key in ("glue_area_sq_in", "glue_gsm", "glue_rate_per_kg")):
         values["glue_lines"] = [{
             "name": f"{component.component_name} glue",
             "area_sq_in": row_values.get("glue_area_sq_in", 0),
             "gsm": row_values.get("glue_gsm", 20),
-            "rate_per_kg": row_values.get("glue_rate_per_kg", 90),
+            "rate_per_kg": row_values.get("glue_rate_per_kg", values["glue_rate_per_kg"]),
         }]
     if module == "Accessories" and any(key in row_values for key in ("accessory_quantity_per_box", "accessory_unit_cost")):
         values["accessories"] = [{
@@ -643,14 +896,86 @@ def _nearest_punching_die(sheet_size):
         ),
     )
 
-def _calculate_component_line(module, process, component, p, formulas, wrapper_final):
-    row_input = _component_estimate_input(p, component, process, module)
+def _has_component_wastage(component, module, process):
+    module_inputs = component.process_inputs.get(module, {})
+    process_inputs = component.process_inputs.get(process, {})
+    return (
+        module_inputs.get("kappa_wastage_percent") is not None
+        or process_inputs.get("kappa_wastage_percent") is not None
+    )
+
+def _has_explicit_component_value(p, component, module, process, key):
+    value = getattr(p, key, None)
+    if key in p.model_fields_set and value is not None and (not isinstance(value, str) or value.strip()):
+        return True
+    return any(
+        inputs.get(key) is not None
+        and (not isinstance(inputs[key], str) or inputs[key].strip())
+        for inputs in (component.process_inputs.get(module, {}), component.process_inputs.get(process, {}))
+    )
+
+def _calculate_component_line(module, process, component, p, formulas, wrapper_final, master_rates=None):
+    master_rates = master_rates or {}
+    is_foam_insert = module == "Insert" and component.material.strip().upper() in {"EVA", "EPE", "PU"}
+    if module in {"Kappa", "Insert"} and not is_foam_insert and "kappa_wastage_percent" not in p.model_fields_set:
+        if not _has_component_wastage(component, module, process) and "kappa_wastage_percent" not in master_rates:
+            return None, "Set Base Material wastage in Master Configuration or for this component."
+    if module == "Wrapper" and "wrapper_wastage_percent" not in p.model_fields_set:
+        module_inputs = component.process_inputs.get(module, {})
+        process_inputs = component.process_inputs.get(process, {})
+        if (
+            module_inputs.get("wrapper_wastage_percent") is None
+            and process_inputs.get("wrapper_wastage_percent") is None
+            and "wrapper_wastage_percent" not in master_rates
+        ):
+            return None, "Set Wrapper wastage in Master Configuration or for this component."
+    row_input = _component_estimate_input(p, component, process, module, master_rates)
     if module in {"Kappa", "Insert"}:
         if module == "Insert":
-            sheet_size = component.extracted_fields.get("sheet_size", {}).get("normalized_value")
-            if component.source == "pdf_text" and (not sheet_size or sheet_size.get("unit") not in {"mm", "in"}):
-                return None, "Confirm the insert sheet-size unit before costing."
             material = component.material.strip().upper()
+            if material in {"EVA", "EPE", "PU"}:
+                method = (row_input.insert_pricing_method or "").strip().lower()
+                pieces_per_box = row_input.insert_quantity_per_box
+                if method == "thickness-based":
+                    thickness = row_input.insert_thickness_mm
+                    if thickness is None or pieces_per_box is None:
+                        return None, "Select thickness-based insert pricing and enter thickness and pieces per box."
+                    pricing_method = 1
+                    trace = [("Pricing method", "Thickness-based"), ("Thickness (mm)", thickness), ("Cost / 10 mm", row_input.foam_insert_rate_per_10mm), ("Pieces / box", pieces_per_box)]
+                elif method == "fixed per insert":
+                    if pieces_per_box is None or row_input.foam_insert_fixed_rate_per_piece <= 0:
+                        return None, "Configure the fixed cost per insert and enter pieces per box."
+                    pricing_method = 2
+                    trace = [("Pricing method", "Fixed per insert"), ("Cost / insert", row_input.foam_insert_fixed_rate_per_piece), ("Pieces / box", pieces_per_box)]
+                elif method == "per kg":
+                    weight = row_input.insert_weight_g_per_piece
+                    if pieces_per_box is None or weight is None or row_input.foam_insert_rate_per_kg <= 0:
+                        return None, "Configure the foam insert rate per kg and enter insert weight and pieces per box."
+                    pricing_method = 3
+                    trace = [("Pricing method", "Per kg"), ("Weight / insert (g)", weight), ("Rate / kg", row_input.foam_insert_rate_per_kg), ("Pieces / box", pieces_per_box)]
+                else:
+                    return None, "Choose a valid EVA/EPE/PU insert pricing method."
+                total = evaluate_formula("insert_complete_total_cost", {
+                    "pricing_method": pricing_method, "quantity": row_input.quantity,
+                    "ups": 1, "wastage_percent": 0, "sheet_length_mm": 0,
+                    "sheet_width_mm": 0, "gsm": 0, "rate_per_kg": row_input.foam_insert_rate_per_kg,
+                    "rate_per_10mm": row_input.foam_insert_rate_per_10mm,
+                    "thickness_mm": row_input.insert_thickness_mm or 0,
+                    "pieces_per_box": pieces_per_box,
+                    "rate_per_piece": row_input.foam_insert_fixed_rate_per_piece,
+                    "weight_g_per_piece": row_input.insert_weight_g_per_piece or 0,
+                }, formulas)
+                formula = formulas["insert_complete_total_cost"]
+                line = _costing_line("Insert", total, row_input.quantity, trace, total / row_input.quantity, "box", formula, formulas)
+                line.update({
+                    "component_name": component.component_name,
+                    "material": component.material,
+                    "component_label": component_label(component.model_dump()),
+                    "process": process,
+                })
+                return line, None
+            if any(getattr(row_input, key) is None for key in ("insert_gsm", "insert_ups", "insert_sheet_length_mm", "insert_sheet_width_mm")):
+                return None, "Insert GSM, UPS, and sheet dimensions are required before costing."
             material_rates = {
                 "KAPPA": row_input.kappa_master_rate,
                 "KAPPA BOARD": row_input.kappa_master_rate,
@@ -658,35 +983,64 @@ def _calculate_component_line(module, process, component, p, formulas, wrapper_f
                 "DUPLEX": row_input.duplex_board_rate_per_kg,
                 "DUPLEX BOARD": row_input.duplex_board_rate_per_kg,
             }
-            if material in {"EVA", "EPE", "PU"}:
-                return None, "Insert costing for EVA/EPE/PU requires a confirmed thickness-based rate."
             if material not in material_rates:
                 return None, f"Insert costing for {component.material} is not configured."
             row_input.kappa_master_rate = material_rates[material]
             row_input.kappa_rate_per_kg = row_input.kappa_override_rate if row_input.kappa_override_rate is not None else material_rates[material]
-        line = _calculate_kappa(row_input, formulas)
+            line = _calculate_insert(row_input, formulas)
+        else:
+            material = component.material.strip().upper()
+            if "FBB" in material:
+                material_rate = row_input.fbb_rate_per_kg
+            elif "DUPLEX" in material:
+                material_rate = row_input.duplex_board_rate_per_kg
+            else:
+                material_rate = row_input.kappa_rate_per_kg
+            row_input.kappa_master_rate = material_rate
+            line = _calculate_kappa(row_input, formulas)
     elif module == "Wrapper":
         line, _ = _calculate_wrapper(row_input, formulas)
     elif module == "Printing":
         if wrapper_final is None:
             return None, "Wrapper final sheets are unavailable. Calculate an applicable Wrapper row first."
+        if component.source == "pdf_text" and not _has_explicit_component_value(p, component, module, process, "print_method"):
+            return None, "Confirm the printing method before costing."
+        if not row_input.print_method.strip():
+            return None, "Confirm the printing method before costing."
+        if component.source == "pdf_text" and not _has_explicit_component_value(p, component, module, process, "print_colour_configuration"):
+            return None, "Confirm the print colour configuration before costing."
         if row_input.print_method.strip().lower() != "offset":
             return None, "Digital printing rates are not configured."
         line = _calculate_printing(row_input, wrapper_final, formulas)
     elif module == "Lamination":
         if wrapper_final is None:
             return None, "Wrapper final sheets are unavailable. Calculate an applicable Wrapper row first."
+        if component.source == "pdf_text" and not _has_explicit_component_value(p, component, module, process, "lamination_type"):
+            return None, "Confirm the lamination method before costing."
+        if not row_input.lamination_type.strip():
+            return None, "Confirm the lamination method before costing."
         finish_field = component.extracted_fields.get("lamination_finish", {})
-        if process == "Lamination" and component.source == "pdf_text" and not finish_field.get("normalized_value"):
+        if (
+            process == "Lamination"
+            and component.source == "pdf_text"
+            and not finish_field.get("normalized_value")
+            and not _has_explicit_component_value(p, component, module, process, "lamination_finish")
+        ):
             return None, "Confirm the extracted lamination finish before costing."
         finish_key = row_input.lamination_finish.strip().lower().replace(" ", "_")
         rate_key = f"{row_input.lamination_type.strip().lower()}_{finish_key}"
         finish_rate = row_input.lamination_method_finish_rates.get(rate_key)
         if finish_rate is None or finish_rate <= 0:
+            finish_rate = row_input.lam_master_rate
+        if finish_rate is None:
             finish_rate = LAMINATION_RATES.get(row_input.lamination_type.strip().lower(), LAMINATION_RATES["thermal"])
         row_input.lam_master_rate = finish_rate
         line = _calculate_lamination(row_input, wrapper_final, formulas)
     elif module == "Glue":
+        if not _has_explicit_component_value(p, component, module, process, "glue_area_sq_in"):
+            return None, "Enter the glue area (sq.in) for this component."
+        if not _has_explicit_component_value(p, component, module, process, "glue_gsm"):
+            return None, "Enter the glue GSM for this component."
         line = _calculate_glue(row_input, formulas)
     elif module == "Punching":
         material_map = {
@@ -709,13 +1063,19 @@ def _calculate_component_line(module, process, component, p, formulas, wrapper_f
             rate = row_input.foiling_rate_per_100_sq_in
             if rate is None:
                 return None, "Foiling rate per 100 sq.in is CONFIGURATION REQUIRED."
-            raw_cost_per_box = evaluate_formula("embellishment_area_raw_cost", {"area_sq_in": row_input.embellishment_area_sq_in, "rate_per_100_sq_in": rate}, formulas)
-            total = evaluate_formula("embellishment_area_total_cost", {"raw_cost_per_box": raw_cost_per_box, "minimum_cost_per_box": row_input.embellishment_minimum, "quantity": row_input.quantity}, formulas)
+            raw_cost_per_box = row_input.embellishment_area_sq_in * rate / 100
+            total = evaluate_formula("embellishments_complete_total_cost", {
+                "pricing_method": 1, "area_sq_in": row_input.embellishment_area_sq_in,
+                "rate_per_sq_in": 0, "setup_cost": 0,
+                "minimum_cost": row_input.embellishment_minimum, "rate_per_100_sq_in": rate,
+                "quantity": row_input.quantity, "sheet_length_in": 0, "sheet_width_in": 0,
+                "input_sheets": 0, "rate_per_box": 0,
+            }, formulas)
             line = _costing_line("Embellishments", total, row_input.quantity, [
                 ("Process", process), ("Component area (sq.in)", row_input.embellishment_area_sq_in),
                 ("Rate / 100 sq.in", rate), ("Raw cost / box", raw_cost_per_box),
                 ("Minimum cost / box", row_input.embellishment_minimum),
-            ], total / row_input.quantity, "box", formulas["embellishment_area_total_cost"], formulas)
+            ], total / row_input.quantity, "box", formulas["embellishments_complete_total_cost"], formulas)
         elif process in {"Spot UV", "Drip-Off"}:
             if wrapper_final is None:
                 return None, "Wrapper final sheets are unavailable for surface finishing."
@@ -723,67 +1083,37 @@ def _calculate_component_line(module, process, component, p, formulas, wrapper_f
             rate = getattr(row_input, rate_key)
             if rate is None:
                 return None, f"{process} rate per 100 sq.in is CONFIGURATION REQUIRED."
-            cost_per_sheet = evaluate_formula("lamination_per_sheet", {"sheet_length_in": row_input.lamination_sheet_length_in, "sheet_width_in": row_input.lamination_sheet_width_in, "rate_per_100_sq_in": rate}, formulas)
-            total = evaluate_formula("lamination_total_cost", {"cost_per_sheet": cost_per_sheet, "wrapper_final_sheets": wrapper_final}, formulas)
+            cost_per_sheet = row_input.lamination_sheet_length_in * row_input.lamination_sheet_width_in * rate / 100
+            total = evaluate_formula("embellishments_complete_total_cost", {
+                "pricing_method": 2, "area_sq_in": 0, "rate_per_sq_in": 0, "setup_cost": 0,
+                "minimum_cost": 0, "rate_per_100_sq_in": rate, "quantity": row_input.quantity,
+                "sheet_length_in": row_input.lamination_sheet_length_in,
+                "sheet_width_in": row_input.lamination_sheet_width_in,
+                "input_sheets": wrapper_final, "rate_per_box": 0,
+            }, formulas)
             line = _costing_line("Embellishments", total, row_input.quantity, [
                 ("Process", process), ("Rate / 100 sq.in", rate),
                 ("Cost / sheet", cost_per_sheet), ("Wrapper final sheets", wrapper_final),
-            ], cost_per_sheet, "sheet", formulas["lamination_total_cost"], formulas)
+            ], cost_per_sheet, "sheet", formulas["embellishments_complete_total_cost"], formulas)
         elif process in {"Embossing", "Debossing"}:
             rate_key = "embossing_cost_per_box" if process == "Embossing" else "debossing_cost_per_box"
             rate = getattr(row_input, rate_key)
             if rate is None:
                 return None, f"{process} direct cost per box is CONFIGURATION REQUIRED."
-            total = evaluate_formula("embellishment_direct_cost_total", {"rate_per_box": rate, "quantity": row_input.quantity}, formulas)
-            line = _costing_line("Embellishments", total, row_input.quantity, [("Process", process), ("Direct cost / box", rate)], total / row_input.quantity, "box", formulas["embellishment_direct_cost_total"], formulas)
+            total = evaluate_formula("embellishments_complete_total_cost", {
+                "pricing_method": 3, "area_sq_in": 0, "rate_per_sq_in": 0, "setup_cost": 0,
+                "minimum_cost": 0, "rate_per_100_sq_in": 0, "quantity": row_input.quantity,
+                "sheet_length_in": 0, "sheet_width_in": 0, "input_sheets": 0, "rate_per_box": rate,
+            }, formulas)
+            line = _costing_line("Embellishments", total, row_input.quantity, [("Process", process), ("Direct cost / box", rate)], total / row_input.quantity, "box", formulas["embellishments_complete_total_cost"], formulas)
         else:
             return None, f"{process} is CONFIGURATION REQUIRED."
     elif module == "Accessories":
         line = _calculate_accessories(row_input, formulas)
     elif module == "Conversion":
-        material = component.material.strip().upper()
-        conversion_type = row_input.conversion_type.strip().lower()
-        is_kappa = material in {"KAPPA", "KAPPA BOARD", "BASE MATERIAL"}
-        if conversion_type == "contract":
-            rate = row_input.conversion_contract_rate_per_box
-            if rate is None:
-                return None, "Contract conversion rate per box is not configured."
-            total = evaluate_formula("conversion_contract_total_cost", {"rate_per_box": rate, "quantity": row_input.quantity}, formulas)
-            conversion_formula = formulas["conversion_contract_total_cost"]
-            trace = [("Method", "Contract"), ("Rate / box", rate), ("Order quantity", row_input.quantity)]
-        elif conversion_type == "automatic" and is_kappa:
-            boxes_per_hour = row_input.conversion_automatic_boxes_per_hour
-            machine_rate = row_input.conversion_automatic_machine_rate
-            setup_rate = row_input.conversion_automatic_setup_rate
-            setup_hours = row_input.conversion_automatic_setup_hours
-            if any(value is None for value in (boxes_per_hour, machine_rate, setup_rate, setup_hours)):
-                return None, "Automatic Kappa conversion parameters are not configured."
-            machine_hours = evaluate_formula("conversion_automatic_machine_hours", {"quantity": row_input.quantity, "boxes_per_hour": boxes_per_hour}, formulas)
-            total = evaluate_formula("conversion_automatic_total_cost", {"machine_hours": machine_hours, "machine_rate": machine_rate, "setup_hours": setup_hours, "setup_rate": setup_rate}, formulas)
-            conversion_formula = formulas["conversion_automatic_total_cost"]
-            trace = [("Method", "Automatic"), ("Machine hours", machine_hours), ("Machine rate / hr", machine_rate), ("Setup hours", setup_hours), ("Setup rate / hr", setup_rate)]
-        elif conversion_type == "semi automatic" and is_kappa:
-            boxes_per_hour = row_input.conversion_semi_boxes_per_hour
-            workers = row_input.conversion_semi_workers
-            salary = row_input.conversion_monthly_salary
-            workdays = row_input.conversion_working_days
-            hours_per_day = row_input.conversion_hours_per_day
-            if any(value is None for value in (boxes_per_hour, workers, salary, workdays, hours_per_day)):
-                return None, "Semi-automatic Kappa conversion parameters are not configured."
-            machine_hours = evaluate_formula("conversion_semi_machine_hours", {"quantity": row_input.quantity, "boxes_per_hour": boxes_per_hour}, formulas)
-            total = evaluate_formula("conversion_semi_total_cost", {"workers": workers, "monthly_salary": salary, "working_days": workdays, "hours_per_day": hours_per_day, "machine_hours": machine_hours}, formulas)
-            conversion_formula = formulas["conversion_semi_total_cost"]
-            trace = [("Method", "Semi Automatic"), ("Machine hours", machine_hours), ("Workers", workers), ("Monthly salary", salary), ("Working days", workdays), ("Hours per day", hours_per_day)]
-        elif material in {"FBB", "DUPLEX", "DUPLEX BOARD", "KRAFT"} and conversion_type == "semi automatic":
-            rate = row_input.conversion_side_pasting_rate_per_box
-            if rate is None:
-                return None, "Side-pasting rate per box is not configured."
-            total = evaluate_formula("conversion_side_pasting_total_cost", {"rate_per_box": rate, "quantity": row_input.quantity}, formulas)
-            conversion_formula = formulas["conversion_side_pasting_total_cost"]
-            trace = [("Method", "Side Pasting"), ("Rate / box", rate), ("Order quantity", row_input.quantity)]
-        else:
-            return None, f"{conversion_type.title()} conversion is not configured for {component.material}."
-        line = _costing_line("Conversion", total, row_input.quantity, trace, total / row_input.quantity, "box", conversion_formula, formulas)
+        line, failure = _calculate_conversion_for_material(row_input, component.material, formulas)
+        if line is None:
+            return None, failure
     elif module == "One Time Cost":
         tooling = component.process_inputs.get(process, {})
         tooling_type = str(tooling.get("tooling_type", "")).strip()
@@ -795,8 +1125,10 @@ def _calculate_component_line(module, process, component, p, formulas, wrapper_f
             rate = getattr(row_input, rate_key)
             if rate is None:
                 return None, f"Punching Die rate for {size_key} is CONFIGURATION REQUIRED."
-            total = rate
-            formula = f"Nearest configured Punching Die rate ({size_key})"
+            total = evaluate_formula("tooling_complete_total_cost", {
+                "pricing_method": 0, "fixed_die_rate": rate, "area_sq_cm": 0, "rate_per_sq_cm": 0,
+            }, formulas)
+            formula = formulas["tooling_complete_total_cost"]
             trace = [("Tooling type", tooling_type), ("Entered sheet size", tooling.get("sheet_size")), ("Nearest configured size", size_key), ("Die rate", rate)]
         elif tooling_type in {"Emboss/Deboss Die", "Foil Stamp Die"}:
             area = tooling.get("area_sq_cm")
@@ -804,8 +1136,11 @@ def _calculate_component_line(module, process, component, p, formulas, wrapper_f
             rate = getattr(row_input, rate_key)
             if area is None or rate is None:
                 return None, f"Area and configured rate are required for {tooling_type}."
-            total = evaluate_formula("tooling_area_die_cost", {"area_sq_cm": float(area), "rate_per_sq_cm": rate}, formulas)
-            formula = formulas["tooling_area_die_cost"]
+            total = evaluate_formula("tooling_complete_total_cost", {
+                "pricing_method": 1, "fixed_die_rate": 0,
+                "area_sq_cm": float(area), "rate_per_sq_cm": rate,
+            }, formulas)
+            formula = formulas["tooling_complete_total_cost"]
             trace = [("Tooling type", tooling_type), ("Area (sq.cm)", area), ("Rate / sq.cm", rate)]
         else:
             return None, "Select a configured tooling or die type."
@@ -821,8 +1156,9 @@ def _calculate_component_line(module, process, component, p, formulas, wrapper_f
     })
     return line, None
 
-def _run_component_calculation(p, formulas=DEFAULT_FORMULAS, only_module=None):
+def _run_component_calculation(p, formulas=DEFAULT_FORMULAS, only_module=None, master_rates=None):
     """Calculate routed rows from the submitted matrix without creating NO rows."""
+    master_rates = master_rates or {}
     unknown_processes = {
         process
         for component in p.components or []
@@ -837,8 +1173,19 @@ def _run_component_calculation(p, formulas=DEFAULT_FORMULAS, only_module=None):
     wrapper_rows = []
     wrapper_sheets = []
     for component in components_for_process(p.components or [], "Wrapper"):
+        if (
+            "wrapper_wastage_percent" not in p.model_fields_set
+            and component.process_inputs.get("Wrapper", {}).get("wrapper_wastage_percent") is None
+            and "wrapper_wastage_percent" not in master_rates
+        ):
+            wrapper_rows.append({
+                "status": "CONFIGURATION REQUIRED",
+                "component_label": component_label(component.model_dump()),
+                "detail": "Set Wrapper wastage in Master Configuration or for this component.",
+            })
+            continue
         try:
-            row_input = _component_estimate_input(p, component, "Wrapper", "Wrapper")
+            row_input = _component_estimate_input(p, component, "Wrapper", "Wrapper", master_rates)
             line, final_sheets = _calculate_wrapper(row_input, formulas)
             line.update({
                 "component_name": component.component_name,
@@ -854,12 +1201,13 @@ def _run_component_calculation(p, formulas=DEFAULT_FORMULAS, only_module=None):
     wrapper_final = wrapper_sheets[0] if wrapper_sheets and len(set(wrapper_sheets)) == 1 else None
     lines = []
     configuration_required = []
+    configuration_details = []
     for module in module_order:
         if only_module and module != only_module:
             continue
         if module == "Wrapper":
-            rows = wrapper_rows
-            failures = [row for row in rows if row.get("status") == "CONFIGURATION REQUIRED"]
+            rows = [row for row in wrapper_rows if row.get("status") != "CONFIGURATION REQUIRED"]
+            failures = [row for row in wrapper_rows if row.get("status") == "CONFIGURATION REQUIRED"]
         else:
             processes = processes_for_module(module)
             if not processes:
@@ -885,7 +1233,9 @@ def _run_component_calculation(p, formulas=DEFAULT_FORMULAS, only_module=None):
                 if only_module and module != only_module:
                     continue
                 try:
-                    line, failure = _calculate_component_line(module, process, component, p, formulas, wrapper_final)
+                    line, failure = _calculate_component_line(
+                        module, process, component, p, formulas, wrapper_final, master_rates
+                    )
                 except (TypeError, ValueError, ZeroDivisionError, OverflowError) as exc:
                     line, failure = None, str(exc)
                 if line:
@@ -900,17 +1250,30 @@ def _run_component_calculation(p, formulas=DEFAULT_FORMULAS, only_module=None):
 
         if failures:
             configuration_required.append(module)
+            configuration_details.extend({"module": module, **failure} for failure in failures)
         if not rows:
             continue
         total = sum(row["total_cost"] for row in rows)
+        trace = [{"label": "Applicable component rows", "value": str(len(rows))}]
+        for component_row in rows:
+            component = component_row.get("component_label", component_row.get("component_name", module))
+            trace.append({"label": f"{component} total cost", "value": str(component_row["total_cost"])})
+            trace.append({"label": f"{component} cost per box", "value": str(component_row["cost_per_box"])})
+            trace.extend({
+                "label": f"{component} · {detail['label']}",
+                "value": str(detail["value"]),
+            } for detail in component_row.get("trace", []))
+            trace.append({"label": f"{component} formula", "value": component_row.get("formula", "Not available")})
+        cost_per_box = evaluate_formula("module_cost_per_box", {"total_cost": total, "quantity": quantity}, formulas)
+        trace.append({"label": "Module cost per box", "value": str(round(cost_per_box, 4))})
         line = {
             "module": module,
             "total_cost": round(total, 4),
-            "cost_per_box": round(evaluate_formula("module_cost_per_box", {"total_cost": total, "quantity": quantity}, formulas), 4),
-            "unit_cost": round(evaluate_formula("module_cost_per_box", {"total_cost": total, "quantity": quantity}, formulas), 4),
+            "cost_per_box": round(cost_per_box, 4),
+            "unit_cost": round(cost_per_box, 4),
             "unit_label": "box",
-            "formula": "Component costs summed using the configured module formula",
-            "trace": [{"label": "Applicable component rows", "value": str(len(rows))}],
+            "formula": f"Module total = sum(component costs); Cost per box = {formulas['module_cost_per_box']}",
+            "trace": trace,
             "component_lines": rows,
             "configuration_required": failures,
         }
@@ -942,6 +1305,7 @@ def _run_component_calculation(p, formulas=DEFAULT_FORMULAS, only_module=None):
         "component_process_matrix": [component.model_dump() for component in p.components or []],
         "lines": lines,
         "configuration_required": sorted(set(configuration_required)),
+        "configuration_details": configuration_details,
     }
 
 # ═══════════════════════════════════════════════════════════════
@@ -1022,10 +1386,17 @@ def update_system_settings(body: SystemSettingsUpdate, db: Session = Depends(get
     db.commit()
     return {"settings": settings, "message": "Settings saved"}
 
+def _effective_master_rates(config):
+    rates = {**MASTER_RATE_DEFAULTS, **(config.rates if config else {})}
+    for key in ("kappa_wastage_percent", "wrapper_wastage_percent"):
+        if rates[key] is None:
+            rates[key] = MASTER_RATE_DEFAULTS[key]
+    return rates
+
 @router.get("/master-config")
 def get_master_config(db: Session = Depends(get_db), current=Depends(_require_config_permission("MASTER_CONFIG_VIEW"))):
     config = db.query(MasterConfiguration).filter(MasterConfiguration.id == 1).first()
-    rates = {**MASTER_RATE_DEFAULTS, **(config.rates if config else {})}
+    rates = _effective_master_rates(config)
     return {"rates": rates, "version": _configuration_version(rates)}
 
 @router.put("/master-config")
@@ -1033,14 +1404,22 @@ def update_master_config(body: MasterRatesUpdate, db: Session = Depends(get_db),
     unknown = set(body.rates) - set(MASTER_RATE_DEFAULTS)
     if unknown:
         raise HTTPException(422, f"Unknown master rates: {', '.join(sorted(unknown))}")
-    if any(not isfinite(value) or value < 0 for value in body.rates.values()):
-        raise HTTPException(422, "Master rates must be finite non-negative numbers")
+    optional_defaults = {"kappa_wastage_percent", "wrapper_wastage_percent"}
+    if any(
+        value is None and key not in optional_defaults
+        or value is not None and (not isfinite(value) or value < 0)
+        for key, value in body.rates.items()
+    ):
+        raise HTTPException(422, "Master values must be finite non-negative numbers")
+    default_margin = body.rates.get("default_margin_percent", MASTER_RATE_DEFAULTS["default_margin_percent"])
+    if default_margin is not None and default_margin >= 100:
+        raise HTTPException(422, "Default margin must be less than 100 percent")
 
     config = db.query(MasterConfiguration).filter(MasterConfiguration.id == 1).first()
     if config is None:
         config = MasterConfiguration(id=1, rates=dict(MASTER_RATE_DEFAULTS))
         db.add(config)
-    previous = {**MASTER_RATE_DEFAULTS, **(config.rates or {})}
+    previous = _effective_master_rates(config)
     rates = {**previous, **body.rates}
     config.rates = rates
     _audit(db, "Master Configuration Updated", "config", "master-rates",
@@ -1056,7 +1435,8 @@ def update_master_config(body: MasterRatesUpdate, db: Session = Depends(get_db),
 @router.post("/estimates/calculate")
 def calculate_estimate(payload: EstimateInput, db: Session = Depends(get_db)):
     try:
-        return _run_calculation(payload, _active_formulas(db))
+        master_record = db.query(MasterConfiguration).filter(MasterConfiguration.id == 1).first()
+        return _run_calculation(payload, _active_formulas(db), _effective_master_rates(master_record))
     except (ValueError, TypeError, ZeroDivisionError, OverflowError) as exc:
         raise HTTPException(422, f"Configured formula could not be evaluated: {exc}") from exc
 
@@ -1072,22 +1452,36 @@ def calculate_estimate_module(body: ModuleCalculationRequest, db: Session = Depe
         "Embellishments": EmbellishmentsModuleInput,
         "Accessories": AccessoriesModuleInput,
     }
-    if body.module == "EB" or (body.module == "Conversion" and body.components is None):
+    if body.module == "EB":
         raise HTTPException(409, f"{body.module} is CONFIGURATION REQUIRED")
     formulas = _active_formulas(db)
+    master_record = db.query(MasterConfiguration).filter(MasterConfiguration.id == 1).first()
+    master_rates = _effective_master_rates(master_record)
     matrix_mode = body.components is not None
     if matrix_mode:
         try:
             inputs = EstimateInput.model_validate({**body.inputs, "components": body.components})
-            result = _run_component_calculation(inputs, formulas, only_module=body.module)
+            result = _run_component_calculation(
+                inputs, formulas, only_module=body.module, master_rates=master_rates
+            )
         except (ValidationError, ValueError, TypeError, ZeroDivisionError, OverflowError) as exc:
             raise HTTPException(422, str(exc)) from exc
         line = next((item for item in result["lines"] if item["module"] == body.module), None)
         if line is None:
-            return {"line": None, "stored": False, "configuration_required": result["configuration_required"]}
+            return {
+                "line": None,
+                "stored": False,
+                "configuration_required": result["configuration_required"],
+                "configuration_details": [
+                    detail for detail in result["configuration_details"]
+                    if detail["module"] == body.module
+                ],
+            }
         wrapper_final = result["wrapper_final_sheets"] if body.module == "Wrapper" else None
     else:
         model = module_models.get(body.module)
+        if body.module == "Conversion":
+            model = EstimateInput
         if model is None:
             raise HTTPException(404, "Unknown costing module")
         try:
@@ -1118,6 +1512,11 @@ def calculate_estimate_module(body: ModuleCalculationRequest, db: Session = Depe
                 wrapper_final = None
             elif body.module == "Embellishments":
                 line = _calculate_embellishments(inputs, formulas)
+                wrapper_final = None
+            elif body.module == "Conversion":
+                line, failure = _calculate_conversion_for_material(inputs, inputs.conversion_base_material, formulas)
+                if line is None:
+                    raise HTTPException(409, failure)
                 wrapper_final = None
             else:
                 line = _calculate_accessories(inputs, formulas)
@@ -1326,8 +1725,8 @@ def save_estimate(payload: EstimateInput, db: Session = Depends(get_db)):
     """
     formulas = _active_formulas(db)
     master_record = db.query(MasterConfiguration).filter(MasterConfiguration.id == 1).first()
-    master_rates = {**MASTER_RATE_DEFAULTS, **(master_record.rates if master_record else {})}
-    result = _run_calculation(payload, formulas)
+    master_rates = _effective_master_rates(master_record)
+    result = _run_calculation(payload, formulas, master_rates)
     num    = _next_estimate_number(db)
 
     est = Estimate(
@@ -1473,9 +1872,11 @@ def create_quotation(body: QuotationCreate, db: Session = Depends(get_db)):
     unit_price = body.unit_price if body.unit_price is not None else est.selling_price_per_box
     document_date = datetime.combine(body.document_date, datetime.min.time()) if body.document_date else datetime.utcnow()
     formulas = _active_formulas(db)
-    subtotal = round(evaluate_formula("quotation_subtotal", {"unit_price": unit_price, "quantity": quantity}, formulas), 2)
-    gst_amt = round(evaluate_formula("quotation_gst_amount", {"subtotal": subtotal, "gst_percent": body.gst_percent}, formulas), 2)
-    grand = round(evaluate_formula("quotation_grand_total", {"subtotal": subtotal, "gst_amount": gst_amt}, formulas), 2)
+    subtotal = round(unit_price * quantity, 2)
+    gst_amt = round(subtotal * body.gst_percent / 100, 2)
+    grand = round(evaluate_formula("quotation_complete_grand_total", {
+        "unit_price": unit_price, "quantity": quantity, "gst_percent": body.gst_percent,
+    }, formulas), 2)
 
     q = Quotation(
         quotation_number = q_num,
@@ -1542,8 +1943,8 @@ def preview_quotation(body: QuotationCreate, db: Session = Depends(get_db)):
     quantity = body.order_quantity or 0
     unit_price = body.unit_price or 0
     formulas = _active_formulas(db)
-    subtotal = round(evaluate_formula("quotation_subtotal", {"unit_price": unit_price, "quantity": quantity}, formulas), 2)
-    gst_amount = round(evaluate_formula("quotation_gst_amount", {"subtotal": subtotal, "gst_percent": body.gst_percent}, formulas), 2)
+    subtotal = round(unit_price * quantity, 2)
+    gst_amount = round(subtotal * body.gst_percent / 100, 2)
     data = {
         "quotation_number": q_num,
         "doc_type": body.doc_type,
@@ -1556,7 +1957,9 @@ def preview_quotation(body: QuotationCreate, db: Session = Depends(get_db)):
         "subtotal": subtotal,
         "gst_percent": body.gst_percent,
         "gst_amount": gst_amount,
-        "grand_total": round(evaluate_formula("quotation_grand_total", {"subtotal": subtotal, "gst_amount": gst_amount}, formulas), 2),
+        "grand_total": round(evaluate_formula("quotation_complete_grand_total", {
+            "unit_price": unit_price, "quantity": quantity, "gst_percent": body.gst_percent,
+        }, formulas), 2),
         "validity_days": body.validity_days,
         "notes": body.notes,
     }
@@ -1598,9 +2001,11 @@ def update_quotation(quotation_id: int, body: QuotationCreate, db: Session = Dep
     unit_price = body.unit_price if body.unit_price is not None else q.unit_price
     document_date = body.document_date or (q.created_at.date() if q.created_at else date.today())
     formulas = _active_formulas(db)
-    subtotal = round(evaluate_formula("quotation_subtotal", {"unit_price": unit_price, "quantity": quantity}, formulas), 2)
-    gst_amount = round(evaluate_formula("quotation_gst_amount", {"subtotal": subtotal, "gst_percent": body.gst_percent}, formulas), 2)
-    grand_total = round(evaluate_formula("quotation_grand_total", {"subtotal": subtotal, "gst_amount": gst_amount}, formulas), 2)
+    subtotal = round(unit_price * quantity, 2)
+    gst_amount = round(subtotal * body.gst_percent / 100, 2)
+    grand_total = round(evaluate_formula("quotation_complete_grand_total", {
+        "unit_price": unit_price, "quantity": quantity, "gst_percent": body.gst_percent,
+    }, formulas), 2)
     doc_type = body.doc_type or q.doc_type
     pdf_data = {
         "quotation_number": q_num, "doc_type": doc_type,

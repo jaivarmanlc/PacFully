@@ -15,6 +15,7 @@ from backend.ai import layout_reader
 from backend.ai.layout_reader import extract_pdf_layout, parse_component_process_table
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+from backend.formulas import DEFAULT_FORMULAS
 from backend.routes import EstimateInput, _run_calculation
 from backend.app import app
 
@@ -72,7 +73,7 @@ def test_unknown_process_is_rejected(components):
 
 
 def test_full_calculation_creates_only_yes_process_lines():
-    estimate = EstimateInput(components=[
+    estimate = EstimateInput(kappa_wastage_percent=0, components=[
         {"component_name": "Base Material", "material": "Kappa", "processes": {"Base Material": True}},
         {"component_name": "Insert2", "material": "EPE", "processes": {"Punching": False}},
     ])
@@ -82,6 +83,112 @@ def test_full_calculation_creates_only_yes_process_lines():
     assert [line["module"] for line in result["lines"]] == ["Kappa"]
     assert result["lines"][0]["component_lines"][0]["component_label"] == "Base Material_Kappa"
     assert result["total_manufacturing_cost"] == result["lines"][0]["total_cost"]
+
+
+def test_component_costing_requires_wastage_instead_of_using_backend_default():
+    component = {"component_name": "Base Material", "material": "Kappa", "processes": {"Base Material": True}}
+    missing = _run_calculation(EstimateInput(quantity=100, components=[component]))
+    configured = _run_calculation(EstimateInput(quantity=100, kappa_wastage_percent=0, components=[component]))
+
+    assert "Kappa" in missing["configuration_required"]
+    assert not any(line["module"] == "Kappa" for line in missing["lines"])
+    assert any(line["module"] == "Kappa" for line in configured["lines"])
+
+
+def test_module_endpoint_returns_component_configuration_details(monkeypatch):
+    import auth
+
+    monkeypatch.setattr(auth, "PUBLIC_APP_ACCESS", True)
+    response = TestClient(app).post("/api/estimates/calculate/module", json={
+        "module": "Insert",
+        "inputs": {"quantity": 5000, "kappa_wastage_percent": 10},
+        "components": [{
+            "component_name": "INS-DUPLEX-01",
+            "material": "Duplex",
+            "processes": {"Insert": True},
+            "process_inputs": {"Insert": {"insert_gsm": 230, "insert_ups": 2}},
+        }],
+    })
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["line"] is None
+    assert payload["configuration_details"][0]["module"] == "Insert"
+    assert "GSM, UPS, and sheet dimensions are required" in payload["configuration_details"][0]["detail"]
+
+
+def test_module_calculation_trace_includes_component_formula_details():
+    result = _run_calculation(EstimateInput(quantity=1000, kappa_wastage_percent=0, components=[
+        {"component_name": "Base Material", "material": "Kappa", "processes": {"Base Material": True}},
+    ]))
+
+    line = next(item for item in result["lines"] if item["module"] == "Kappa")
+    trace = {item["label"]: item["value"] for item in line["trace"]}
+
+    assert trace["Applicable component rows"] == "1"
+    assert trace["Base Material_Kappa · Effective GSM"] == "400.0 × 2.0 = 800.0"
+    assert "Base Material_Kappa · Sheet area" in trace
+    assert "Base Material_Kappa · KG / sheet" in trace
+    assert "Base Material_Kappa · Wastage sheets" in trace
+    assert "Base Material_Kappa · Effective rate" in trace
+    assert "Base Material_Kappa · Total Cost" in trace
+    assert trace["Base Material_Kappa formula"] == DEFAULT_FORMULAS["kappa_complete_total_cost"]
+    assert "Base Material_Kappa cost per box" in trace
+    assert "Module cost per box" in trace
+    assert line["formula"].endswith("total_cost / quantity")
+
+
+def test_base_material_uses_master_rate_for_each_component_material():
+    result = _run_calculation(EstimateInput(
+        quantity=100,
+        kappa_wastage_percent=0,
+        kappa_rate_per_kg=10,
+        fbb_rate_per_kg=20,
+        duplex_board_rate_per_kg=30,
+        components=[
+            {"component_name": "Kappa", "material": "White Back Kappa Board", "processes": {"Base Material": True}},
+            {"component_name": "FBB", "material": "FBB Board", "processes": {"Base Material": True}},
+            {"component_name": "Duplex", "material": "Duplex Board", "processes": {"Base Material": True}},
+        ],
+    ))
+
+    component_lines = result["lines"][0]["component_lines"]
+    per_sheet_costs = [
+        next(item["value"] for item in line["trace"] if item["label"].endswith("Per Sheet Cost"))
+        for line in component_lines
+    ]
+
+    assert "₹10" in per_sheet_costs[0]
+    assert "₹20" in per_sheet_costs[1]
+    assert "₹30" in per_sheet_costs[2]
+
+
+def test_base_material_component_override_precedes_shared_estimate_override():
+    result = _run_calculation(EstimateInput(
+        quantity=100,
+        kappa_wastage_percent=0,
+        kappa_rate_per_kg=10,
+        kappa_master_rate=15,
+        kappa_override_rate=20,
+        components=[
+            {"component_name": "Inherited", "material": "Kappa Board", "processes": {"Base Material": True}},
+            {
+                "component_name": "Component Override",
+                "material": "Kappa Board",
+                "processes": {"Base Material": True},
+                "process_inputs": {"Kappa": {"kappa_override_rate": 25}},
+            },
+        ],
+    ))
+
+    component_lines = result["lines"][0]["component_lines"]
+    per_sheet_costs = [
+        next(item["value"] for item in line["trace"] if item["label"].endswith("Per Sheet Cost"))
+        for line in component_lines
+    ]
+
+    assert "₹20" in per_sheet_costs[0]
+    assert "₹25" in per_sheet_costs[1]
 
 
 def test_no_process_rows_do_not_create_zero_cost_module_lines():
@@ -97,7 +204,7 @@ def test_no_process_rows_do_not_create_zero_cost_module_lines():
 
 
 def test_multiple_components_with_same_material_keep_separate_cost_rows():
-    estimate = EstimateInput(components=[
+    estimate = EstimateInput(kappa_wastage_percent=0, components=[
         {"component_name": "Insert1", "material": "Kappa", "processes": {"Base Material": True}},
         {"component_name": "Insert2", "material": "Kappa", "processes": {"Base Material": True}},
     ])
@@ -115,7 +222,7 @@ def test_multiple_components_with_same_material_keep_separate_cost_rows():
 
 def test_wrapper_final_sheets_feed_printing_component_rows():
     estimate = EstimateInput(components=[
-        {"component_name": "Wrapper", "material": "Art Paper", "processes": {"Wrapper": True}},
+        {"component_name": "Wrapper", "material": "Art Paper", "processes": {"Wrapper": True}, "process_inputs": {"Wrapper": {"wrapper_wastage_percent": 10}}},
         {"component_name": "Printed Wrapper", "material": "Art Paper", "processes": {"Printing": True}},
     ])
 
@@ -125,6 +232,76 @@ def test_wrapper_final_sheets_feed_printing_component_rows():
 
     assert result["wrapper_final_sheets"] == wrapper["wrapper_final_sheets"]
     assert any("final wrapper sheets" in trace["value"] for trace in printing["component_lines"][0]["trace"])
+
+def test_kappa_component_calculates_from_component_inputs_without_blank_shared_fields():
+    result = _run_calculation(EstimateInput(quantity=5000, components=[{
+        "component_name": "Top-KAPPA-01",
+        "material": "White Back Kappa Board",
+        "processes": {"Base Material": True},
+        "process_inputs": {
+            "Kappa": {
+                "kappa_gsm_at_1mm": 750,
+                "kappa_thickness_mm": 1.5,
+                "kappa_sheet_length_mm": 787.4,
+                "kappa_sheet_width_mm": 520.7,
+                "kappa_ups": 6,
+                "kappa_wastage_percent": 10,
+            },
+        },
+    }]))
+
+    kappa = next(line for line in result["lines"] if line["module"] == "Kappa")
+    assert kappa["component_lines"][0]["component_name"] == "Top-KAPPA-01"
+    assert kappa["component_lines"][0]["total_cost"] > 0
+    assert "Kappa" not in result["configuration_required"]
+
+def test_pdf_printing_requires_confirmed_method_and_accepts_custom_colour():
+    component = {
+        "component_name": "Printed Wrapper",
+        "material": "Art Paper",
+        "source": "pdf_text",
+        "processes": {"Wrapper": True, "Printing": True},
+        "process_inputs": {"Wrapper": {"wrapper_wastage_percent": 10}},
+    }
+    incomplete = _run_calculation(EstimateInput(
+        wrapper_wastage_percent=10,
+        print_method="",
+        print_colour_configuration="",
+        components=[component],
+    ))
+    assert "Printing" in incomplete["configuration_required"]
+
+    component["process_inputs"]["Printing"] = {
+        "print_method": "Offset",
+        "print_colour_configuration": "2 spot colours + white",
+    }
+    confirmed = _run_calculation(EstimateInput(
+        wrapper_wastage_percent=10,
+        components=[component],
+    ))
+    assert "Printing" not in confirmed["configuration_required"]
+    assert any(line["module"] == "Printing" for line in confirmed["lines"])
+
+def test_pdf_lamination_can_use_explicit_component_finish_confirmation():
+    result = _run_calculation(EstimateInput(
+        quantity=5000,
+        wrapper_wastage_percent=10,
+        components=[{
+            "component_name": "Wrapper",
+            "material": "Art Paper",
+            "source": "pdf_text",
+            "processes": {"Wrapper": True, "Lamination": True},
+            "process_inputs": {
+                "Wrapper": {"wrapper_wastage_percent": 10, "wrapper_ups": 2},
+                "Lamination": {"lamination_type": "thermal", "lamination_finish": "Gloss"},
+            },
+            "extracted_fields": {
+                "lamination_finish": {"value": "glass", "normalized_value": None},
+            },
+        }],
+    ))
+    assert "Lamination" not in result["configuration_required"]
+    assert any(line["module"] == "Lamination" for line in result["lines"])
 
 
 def test_punching_and_die_cutting_aliases_create_one_foam_cost_row():
@@ -183,6 +360,19 @@ def test_layout_extract_api_reads_explicit_pdf_matrix_rows():
     assert component["component_name"] == "Insert1"
     assert component["material"] == "EVA"
     assert component["processes"]["Die Cutting"] is True
+
+
+def test_layout_extract_api_allows_public_access_without_token(monkeypatch):
+    import auth
+
+    monkeypatch.setattr(auth, "PUBLIC_APP_ACCESS", True)
+    response = TestClient(app).post(
+        "/api/layout/extract",
+        files={"file": ("structured.pdf", _structured_layout_pdf(), "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["components"][0]["component_name"] == "Top-KAPPA-01"
 
 
 def _structured_layout_pdf():
@@ -286,7 +476,7 @@ def test_pymupdf_table_cells_are_used_when_native_page_text_is_empty(monkeypatch
     assert result["components"][0]["processes"]["Punching"] is True
 
 
-def test_missing_sheet_unit_requires_confirmation_and_does_not_create_cost_override():
+def test_duplex_sheet_without_unit_remains_unconfirmed_and_does_not_extract_dimensions():
     text = (
         "Component ID: INS-DUPLEX-01\nMaterial: Duplex\nSheet Size: 30x20\n"
         "GSM: 230gsm\nUPS: 2 set ups\nPunching: Yes\nLamination: Yes / glass"
@@ -298,12 +488,16 @@ def test_missing_sheet_unit_requires_confirmation_and_does_not_create_cost_overr
     document.close()
 
     component = result["components"][0]
+    assert component["extracted_fields"]["sheet_size"]["normalized_value"] == {"length": 30.0, "width": 20.0, "unit": None}
     assert component["extracted_fields"]["sheet_size"]["review_status"] == "Confirmation Required"
     assert component["extracted_fields"]["lamination_finish"]["value"] == "glass"
     assert component["extracted_fields"]["lamination_finish"]["normalized_value"] is None
     assert component["extracted_fields"]["lamination_finish"]["review_status"] == "Confirmation Required"
     assert component["processes"]["Lamination"] is True
-    assert "Insert" not in component["process_inputs"]
+    assert component["process_inputs"]["Insert"] == {
+        "insert_gsm": 230.0,
+        "insert_ups": 2,
+    }
 
 
 def test_ocr_is_used_only_when_native_page_text_is_missing(monkeypatch):
@@ -449,23 +643,22 @@ def test_kakada_reference_pdf_extracts_and_routes_components_end_to_end(kakada_p
         "wrapper_gsm": 128.0,
         "wrapper_ups": 2,
     }
-    assert result["components"][3]["extracted_fields"]["sheet_size"]["review_status"] == "Confirmation Required"
+    assert result["components"][3]["process_inputs"]["Insert"] == {
+        "insert_gsm": 230.0,
+        "insert_ups": 2,
+    }
+    assert result["components"][3]["extracted_fields"]["sheet_size"]["normalized_value"] == {
+        "length": 30.0, "width": 20.0, "unit": None,
+    }
 
     calculation = _run_calculation(EstimateInput(
         quantity=result["document_fields"]["quantity"]["normalized_value"],
         components=result["components"],
     ))
-    modules = {line["module"] for line in calculation["lines"]}
-    assert {"Kappa", "Wrapper", "Printing", "Lamination", "Punching"} <= modules
-    assert "Insert" not in modules
-    assert {"Insert", "Lamination"} <= set(calculation["configuration_required"])
+    assert {"Kappa", "Wrapper", "Insert", "Printing", "Lamination"} <= set(calculation["configuration_required"])
+    assert calculation["wrapper_final_sheets"] is None
+    assert "Wrapper" not in {line["module"] for line in calculation["lines"]}
     assert result["components"][0]["processes"]["Base Material"] is True
     assert result["components"][1]["processes"]["Base Material"] is True
     assert result["components"][2]["processes"]["Wrapper"] is True
     assert result["components"][3]["processes"]["Insert"] is True
-    assert next(line for line in calculation["lines"] if line["module"] == "Wrapper")["wrapper_final_sheets"] == 2900
-    punching_line = next(line for line in calculation["lines"] if line["module"] == "Punching")
-    assert {row["component_name"] for row in punching_line["component_lines"]} == {
-        "Top-KAPPA-01", "Bottom-KAPPA-02", "WR-01", "INS-DUPLEX-01",
-    }
-    assert calculation["total_manufacturing_cost"] > 0

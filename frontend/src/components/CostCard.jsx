@@ -51,6 +51,9 @@ export function StatusPill({ status }) {
 
 export function RateConfigRow({ masterRate, overrideRate, effectiveRate, onOverrideChange, onReset, label = 'Rate (₹/kg)' }) {
   const [draftOverride, setDraftOverride] = React.useState(overrideRate ?? '');
+  const formatRate = rate => rate == null || rate === '' || !Number.isFinite(Number(rate))
+    ? '—'
+    : Number(rate).toFixed(2);
 
   React.useEffect(() => {
     setDraftOverride(overrideRate ?? '');
@@ -69,7 +72,7 @@ export function RateConfigRow({ masterRate, overrideRate, effectiveRate, onOverr
     <div className="rate-config">
       <div>
         <span className="rate-config-label">Master Rate</span>
-        <span className="rate-val prominent">₹ {masterRate?.toFixed(2)}</span>
+        <span className="rate-val prominent">₹ {formatRate(masterRate)}</span>
       </div>
       <div>
         <span className="rate-config-label">Estimate Override ✏</span>
@@ -87,7 +90,7 @@ export function RateConfigRow({ masterRate, overrideRate, effectiveRate, onOverr
       </div>
       <div>
         <span className="rate-config-label">Effective Rate</span>
-        <span className="rate-val prominent orange">₹ {effectiveRate?.toFixed(2)}</span>
+        <span className="rate-val prominent orange">₹ {formatRate(effectiveRate)}</span>
       </div>
       <button className="btn btn-secondary btn-sm" type="button" onClick={resetOverride}>Reset to Master</button>
     </div>
@@ -99,7 +102,7 @@ export function CalcTracePanel({ rows = [], formula }) {
     <div className="calc-trace">
       <div className="calc-trace-title">How was this calculated?</div>
       {rows.map(({ label, value, formula: rowFormula }, i) => (
-        <div className="calc-trace-row" key={i}>
+        <div className={`calc-trace-row${/cost per box/i.test(label) ? ' per-box' : ''}`} key={i}>
           <span>{label}</span>
           <strong>{value}</strong>
           {rowFormula && <em style={{ fontSize: 11, color: 'var(--muted-2)', fontStyle: 'normal' }}>{rowFormula}</em>}

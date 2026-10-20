@@ -39,7 +39,7 @@ const PROCESS_RATES = [
   { key: 'embellishment_minimum', name: 'Embellishment Minimum', unit: '₹/box', master: 1000, category: 'Embellishments' },
 ];
 
-const TABS = ['Material Rates', 'Process Rates', 'Punching', 'Make-ready Defaults', 'Conversion & Tooling'];
+const TABS = ['Material Rates', 'Process Rates', 'Punching', 'Make-ready Defaults', 'Estimate Defaults', 'Conversion & Tooling'];
 const PUNCHING_RATES = [
   { key: 'punching_machine_rate_per_hour', name: 'Machine Rate', unit: '₹/hour', master: 400, category: 'Punching' },
   { key: 'punching_speed_kappa', name: 'Kappa Speed', unit: 'sheets/hour', master: 400, category: 'Punching' },
@@ -51,6 +51,11 @@ const PUNCHING_RATES = [
 ];
 const MAKE_READY_RATES = [
   { key: 'wrapper_make_ready_sheets', name: 'Wrapper Make-ready Sheets', unit: 'sheets', master: 150, category: 'Wrapper' },
+];
+const ESTIMATE_DEFAULTS = [
+  { key: 'default_margin_percent', name: 'Default Margin', unit: '%', master: 20, category: 'Estimate' },
+  { key: 'kappa_wastage_percent', name: 'Base Material Wastage', unit: '%', master: 10, category: 'Estimate' },
+  { key: 'wrapper_wastage_percent', name: 'Wrapper Wastage', unit: '%', master: 10, category: 'Estimate' },
 ];
 const CONVERSION_TOOLING_RATES = [
   { key: 'conversion_semi_boxes_per_hour', name: 'Semi-automatic Kappa output', unit: 'boxes/hour', master: 400, category: 'Conversion' },
@@ -64,6 +69,9 @@ const CONVERSION_TOOLING_RATES = [
   { key: 'conversion_automatic_setup_rate', name: 'Automatic setup rate', unit: '₹/hour', master: 645, category: 'Conversion' },
   { key: 'conversion_automatic_setup_hours', name: 'Automatic setup time', unit: 'hours', master: 4, category: 'Conversion' },
   { key: 'conversion_contract_rate_per_box', name: 'Contract conversion rate', unit: '₹/box', master: 3, category: 'Conversion' },
+  { key: 'foam_insert_rate_per_10mm', name: 'Foam insert thickness rate', unit: '₹/piece/10mm', master: 750, category: 'Insert' },
+  { key: 'foam_insert_fixed_rate_per_piece', name: 'Foam insert fixed rate', unit: '₹/piece', master: 0, category: 'Insert' },
+  { key: 'foam_insert_rate_per_kg', name: 'Foam insert weight rate', unit: '₹/kg', master: 0, category: 'Insert' },
   { key: 'foiling_rate_per_100_sq_in', name: 'Foiling surface rate', unit: '₹/100 sq.in', master: 3, category: 'Embellishment' },
   { key: 'spot_uv_rate_per_100_sq_in', name: 'Spot UV surface rate', unit: '₹/100 sq.in', master: 1, category: 'Embellishment' },
   { key: 'embossing_cost_per_box', name: 'Embossing direct cost', unit: '₹/box', master: 1, category: 'Embellishment' },
@@ -95,9 +103,9 @@ function RateTable({ rows, onChange, searchTerm, readOnly = false }) {
             <td><strong style={{ fontSize: 13 }}>{row.name}</strong></td>
             <td><span className="pill pill-orange" style={{ fontSize: 10 }}>{row.category}</span></td>
             <td style={{ fontSize: 12, color: 'var(--muted)' }}>{row.unit}</td>
-            <td style={{ textAlign: 'right', fontFamily: 'Manrope', fontWeight: 600 }}>₹ {row.master}</td>
-            <td style={{ textAlign: 'right' }}><input type="number" min="0" step="any" value={row.value} disabled={readOnly} onChange={event => onChange(index, event.target.value === '' ? '' : Number(event.target.value))} style={{ width: 100, height: 32, border: `1px solid ${row.value !== row.master ? 'var(--orange)' : 'var(--line)'}`, borderRadius: 6, padding: '0 10px', fontSize: 13, fontFamily: 'Manrope', fontWeight: 600, textAlign: 'right', outline: 'none', background: row.value !== row.master ? 'var(--orange-light)' : 'var(--panel)' }} /></td>
-            <td style={{ textAlign: 'center' }}>{row.value !== row.master && <button className="btn btn-ghost btn-sm btn-icon" disabled={readOnly} onClick={() => onChange(index, row.master)} title="Reset to master"><RotateCcw size={13} /></button>}</td>
+            <td style={{ textAlign: 'right', fontFamily: 'Manrope', fontWeight: 600 }}>{row.unit.startsWith('₹') ? '₹ ' : ''}{row.master}</td>
+            <td style={{ textAlign: 'right' }}><input type="number" min="0" step="any" value={row.value} disabled={readOnly} onChange={event => onChange(index, event.target.value === '' ? '' : Number(event.target.value))} style={{ width: 100, height: 32, border: `1px solid ${row.value !== (row.master ?? '') ? 'var(--orange)' : 'var(--line)'}`, borderRadius: 6, padding: '0 10px', fontSize: 13, fontFamily: 'Manrope', fontWeight: 600, textAlign: 'right', outline: 'none', background: row.value !== (row.master ?? '') ? 'var(--orange-light)' : 'var(--panel)' }} /></td>
+            <td style={{ textAlign: 'center' }}>{row.value !== (row.master ?? '') && <button className="btn btn-ghost btn-sm btn-icon" disabled={readOnly} onClick={() => onChange(index, row.master ?? '')} title="Reset to master"><RotateCcw size={13} /></button>}</td>
           </tr>
         ))}
         {!rows.length && <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: 'var(--muted-2)' }}>{searchTerm ? `No rates match "${searchTerm}".` : 'No rates configured.'}</td></tr>}
@@ -118,6 +126,7 @@ export default function MasterConfig() {
   const [procRates, setProcRates] = useState(PROCESS_RATES.map(row => ({ ...row, value: row.master })));
   const [punchRates, setPunchRates] = useState(PUNCHING_RATES.map(row => ({ ...row, value: row.master })));
   const [makeReadyRates, setMakeReadyRates] = useState(MAKE_READY_RATES.map(row => ({ ...row, value: row.master })));
+  const [estimateDefaults, setEstimateDefaults] = useState(ESTIMATE_DEFAULTS.map(row => ({ ...row, value: row.master ?? '' })));
   const [conversionToolingRates, setConversionToolingRates] = useState(CONVERSION_TOOLING_RATES.map(row => ({ ...row, value: row.master })));
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
@@ -134,11 +143,12 @@ export default function MasterConfig() {
   useEffect(() => {
     getMasterConfig().then(({ rates = {}, version = '' }) => {
       setConfigVersion(version);
-      const applyRates = rows => rows.map(row => ({ ...row, value: rates[row.key] ?? row.master }));
+      const applyRates = rows => rows.map(row => ({ ...row, value: rates[row.key] ?? row.master ?? '' }));
       setMatRates(applyRates(MATERIAL_RATES));
       setProcRates(applyRates(PROCESS_RATES));
       setPunchRates(applyRates(PUNCHING_RATES));
       setMakeReadyRates(applyRates(MAKE_READY_RATES));
+      setEstimateDefaults(applyRates(ESTIMATE_DEFAULTS));
       setConversionToolingRates(applyRates(CONVERSION_TOOLING_RATES));
     }).catch(error => showToast(error.message || 'Unable to load master rates'));
   }, []);
@@ -149,15 +159,26 @@ export default function MasterConfig() {
     return rows.filter(row => !query || `${row.name} ${row.key} ${row.category} ${row.unit}`.toLowerCase().includes(query));
   };
   const saveChanges = async () => {
-    const rows = [...matRates, ...procRates, ...punchRates, ...makeReadyRates, ...conversionToolingRates];
-    if (rows.some(row => row.value === '')) {
+    const rows = [...matRates, ...procRates, ...punchRates, ...makeReadyRates, ...estimateDefaults, ...conversionToolingRates];
+    const optionalDefaults = new Set(['kappa_wastage_percent', 'wrapper_wastage_percent']);
+    if (rows.some(row => !optionalDefaults.has(row.key) && (row.value === '' || row.value == null))) {
       showToast('Enter a value in each rate field before saving');
       return;
     }
     setSaving(true);
     try {
-      const saved = await saveMasterConfig(Object.fromEntries(rows.map(row => [row.key, Number(row.value)])));
+      const saved = await saveMasterConfig(Object.fromEntries(rows.map(row => [
+        row.key,
+        optionalDefaults.has(row.key) && (row.value === '' || row.value == null) ? null : Number(row.value),
+      ])));
       setConfigVersion(saved.version || '');
+      window.dispatchEvent(new Event('pacfully-master-config-updated'));
+      try {
+        window.localStorage.setItem('pacfully_master_config_updated', `${saved.version || ''}:${Date.now()}`);
+      } catch {
+        showToast('Master values saved; other open estimator tabs may need a reload.');
+        return;
+      }
       showToast('Master values saved successfully');
     } catch (error) {
       showToast(error.message || 'Unable to save master rates');
@@ -212,6 +233,8 @@ export default function MasterConfig() {
       {activeTab === 'Punching' && <RateTable rows={filterRows(punchRates)} searchTerm={search} onChange={(index, value) => updateRows(setPunchRates, index, value)} readOnly={!canEdit} />}
 
       {activeTab === 'Make-ready Defaults' && <RateTable rows={filterRows(makeReadyRates)} searchTerm={search} onChange={(index, value) => updateRows(setMakeReadyRates, index, value)} readOnly={!canEdit} />}
+
+      {activeTab === 'Estimate Defaults' && <RateTable rows={filterRows(estimateDefaults)} searchTerm={search} onChange={(index, value) => updateRows(setEstimateDefaults, index, value)} readOnly={!canEdit} />}
 
       {activeTab === 'Conversion & Tooling' && <RateTable rows={filterRows(conversionToolingRates)} searchTerm={search} onChange={(index, value) => updateRows(setConversionToolingRates, index, value)} readOnly={!canEdit} />}
 

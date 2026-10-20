@@ -429,6 +429,29 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: #FAFBFC; }
 .table-num { font-family: 'Manrope', sans-serif; font-weight: 700; }
 
+.component-process-panel { padding: 0; overflow: hidden; margin-bottom: 14px; min-width: 0; }
+.component-process-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.component-shared-settings { padding: 10px 16px; background: var(--line-2); border-bottom: 1px solid var(--line); }
+.component-shared-title { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.component-shared-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; min-width: 0; margin-top: 12px; }
+.component-shared-rate { margin-top: 12px; }
+.component-process-list { min-width: 0; }
+.component-process-row { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr) repeat(var(--component-field-count), minmax(0, 1fr)); align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.component-process-row:last-child { border-bottom: 0; }
+.component-process-row-heading { display: contents; }
+.component-process-row-heading strong { min-width: 0; overflow-wrap: anywhere; color: var(--ink-2); font-size: 13px; }
+.component-process-fields { display: contents; }
+.module-component-row { display: block; padding: 14px 16px; }
+.module-component-row .component-process-row-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.module-component-row .component-process-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.kappa-component-row .component-process-fields { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; }
+.component-process-fields .form-group { gap: 4px; min-width: 0; }
+.component-process-fields .form-label { min-height: 24px; display: flex; align-items: end; line-height: 1.15; overflow-wrap: anywhere; }
+.component-process-fields .form-input, .component-process-fields .form-select { height: 36px; padding: 0 8px; }
+.component-process-empty { margin: 0; padding: 16px; color: var(--muted); font-size: 12px; }
+.component-process-results { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px; padding: 14px 16px; border-top: 1px solid var(--line); min-width: 0; }
+.component-process-results > * { min-width: 0; }
+
 /* ── Forms ───────────────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: 5px; }
 .form-label { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; }
@@ -496,7 +519,8 @@ tbody tr:hover td { background: #FAFBFC; }
 .calc-trace-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
 .calc-trace-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
 .calc-trace-row:last-child { border-bottom: none; }
-.calc-trace-row strong { color: var(--ink-3); font-weight: 500; }
+.calc-trace-row strong { color: var(--orange); font-weight: 600; }
+.calc-trace-row.per-box strong { color: #2563EB; font-weight: 700; }
 .calc-formula { font-size: 12px; color: var(--orange); font-weight: 600; margin-top: 10px; }
 
 /* ── Module Tabs ─────────────────────────────────────────── */
@@ -642,6 +666,54 @@ tbody tr:hover td { background: #FAFBFC; }
 }
 .modal-close:hover { background: var(--line); }
 .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.dimension-review-modal { width: 660px; max-height: calc(100dvh - 40px); overflow-y: auto; }
+.dimension-review-modal > p { font-size: 13px; line-height: 1.55; color: var(--muted); }
+.dimension-finished-size {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 12px 14px; margin-bottom: 16px;
+  border: 1px solid var(--line); border-left: 3px solid var(--orange);
+  border-radius: var(--radius-sm); background: var(--line-2);
+}
+.dimension-finished-size span { color: var(--muted); font-size: 12px; font-weight: 600; }
+.dimension-finished-size strong { color: var(--ink); font-size: 14px; text-align: right; }
+.dimension-table-wrap { max-height: 280px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.dimension-table { min-width: 480px; }
+.dimension-table thead th { position: sticky; top: 0; z-index: 1; }
+.dimension-table tbody td { padding: 9px 12px; }
+.dimension-table .dimension-value { color: var(--ink); font-weight: 600; }
+.dimension-empty { padding: 14px; margin: 0; color: var(--muted); font-size: 13px; }
+.technical-review-page { display: flex; flex-direction: column; gap: 12px; }
+.technical-review-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.technical-review-heading .panel-title { margin-bottom: 3px; }
+.technical-finished-size { display: flex; align-items: center; gap: 8px; padding: 8px 11px; border: 1px solid var(--orange-border); border-radius: var(--radius-sm); background: #FFFAF8; }
+.technical-finished-size span { color: var(--muted); font-size: 11px; }
+.technical-finished-size strong { color: var(--orange); font-size: 12px; }
+.technical-review-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.technical-topic-card { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.technical-topic-card h3 { margin: 0 0 10px; color: var(--ink-2); font-size: 13px; font-weight: 650; }
+.technical-components-topic { grid-column: 1 / -1; }
+.technical-value-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.technical-value-item { min-width: 0; padding: 8px; border: 1px solid var(--line-2); border-radius: 6px; background: #FAFBFC; }
+.technical-value-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 5px; }
+.technical-value-label { color: var(--muted); font-size: 10px; line-height: 1.3; }
+.technical-status-pill { flex-shrink: 0; padding: 2px 5px; border-radius: 99px; background: #E8F8ED; color: #2D7A4F; font-size: 9px; line-height: 1.3; }
+.technical-status-pill.needs-review { background: #FFF3DC; color: #9A6718; }
+.technical-value-content { display: block; margin-top: 5px; color: var(--ink); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.technical-value-source { display: block; margin-top: 3px; color: var(--muted-2); font-size: 9px; line-height: 1.3; }
+.technical-component-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.technical-component-card { min-width: 0; padding: 9px; border: 1px solid var(--line-2); border-radius: 6px; }
+.technical-component-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.technical-component-heading > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.technical-component-heading strong { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.technical-component-heading > div > span, .technical-source { color: var(--muted); font-size: 10px; }
+.technical-source { flex-shrink: 0; }
+.technical-routing-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 8px; padding: 7px 0; margin: 5px 0; border-bottom: 1px solid var(--line-2); font-size: 10px; }
+.technical-routing-row > span:first-child { color: var(--muted); }
+.technical-routing-row strong { color: var(--ink-2); font-weight: 600; }
+.technical-routing-row .technical-status { margin-left: auto; color: #9A6718; }
+.technical-component-values { gap: 5px; }
+.technical-component-values .technical-value-item { padding: 6px; }
+.technical-empty { margin: 0; color: var(--muted); font-size: 11px; }
 
 /* ── Toast ───────────────────────────────────────────────── */
 .toast {
@@ -777,6 +849,12 @@ tbody tr:hover td { background: #FAFBFC; }
   .page-header { flex-wrap: wrap; }
   .page-header-right { flex-wrap: wrap; }
   .panel { padding: 16px; }
+  .component-process-row { display: block; }
+  .module-component-row .component-process-row-heading { display: flex; margin-bottom: 10px; }
+  .module-component-row .component-process-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kappa-component-row .component-process-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .component-shared-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .component-process-results { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   :root { --topbar-h: 58px; }
@@ -805,6 +883,16 @@ tbody tr:hover td { background: #FAFBFC; }
   .filter-row .topbar-search { flex: 1 1 100%; }
   .filter-row .form-select { flex: 1 1 140px; width: auto; }
   .panel { padding: 14px; }
+  .technical-review-grid, .technical-component-grid { grid-template-columns: 1fr; }
+  .technical-components-topic { grid-column: auto; }
+  .technical-review-heading { align-items: flex-start; flex-direction: column; }
+  .technical-value-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .component-process-row { display: block; }
+  .module-component-row .component-process-row-heading { display: flex; margin-bottom: 10px; }
+  .module-component-row .component-process-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kappa-component-row .component-process-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .component-shared-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .component-process-results { grid-template-columns: 1fr; }
   .modal { padding: 20px 16px; max-height: calc(100dvh - 24px); overflow-y: auto; }
   .modal-footer { flex-wrap: wrap; }
   .toast { left: 12px; right: 12px; bottom: 12px; justify-content: center; }
@@ -814,5 +902,5 @@ tbody tr:hover td { background: #FAFBFC; }
   .topbar-search input::placeholder { color: var(--muted-2); }
   .metric-grid { grid-template-columns: 1fr; }
   .rate-config { grid-template-columns: 1fr; }
+  .component-shared-grid, .module-component-row .component-process-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-

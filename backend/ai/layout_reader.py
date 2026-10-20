@@ -416,37 +416,40 @@ def _normalise_component(raw_fields, page, source, confidence):
 
 	process_inputs = {}
 	sheet = fields["sheet_size"]["normalized_value"]
+	sheet_length_mm = sheet_width_mm = None
 	if sheet and sheet["unit"]:
 		factor = 25.4 if sheet["unit"] == "in" else 1
 		sheet_length_mm = round(sheet["length"] * factor, 4)
 		sheet_width_mm = round(sheet["width"] * factor, 4)
-		if "KAPPA" in material.upper():
-			module_inputs = {
-				"kappa_sheet_length_mm": sheet_length_mm,
-				"kappa_sheet_width_mm": sheet_width_mm,
-			}
-			if fields["thickness_mm"]["normalized_value"] is not None:
-				module_inputs["kappa_thickness_mm"] = fields["thickness_mm"]["normalized_value"]
-			if fields["gsm_per_mm"]["normalized_value"] is not None:
-				module_inputs["kappa_gsm_at_1mm"] = fields["gsm_per_mm"]["normalized_value"]
-			if fields["ups"]["normalized_value"] is not None:
-				module_inputs["kappa_ups"] = int(fields["ups"]["normalized_value"])
-			process_inputs["Kappa"] = module_inputs
-		elif "ART PAPER" in material.upper():
-			module_inputs = {
-				"wrapper_sheet_length_mm": sheet_length_mm,
-				"wrapper_sheet_width_mm": sheet_width_mm,
-			}
-			if fields["gsm"]["normalized_value"] is not None:
-				module_inputs["wrapper_gsm"] = fields["gsm"]["normalized_value"]
-			if fields["ups"]["normalized_value"] is not None:
-				module_inputs["wrapper_ups"] = int(fields["ups"]["normalized_value"])
-			process_inputs["Wrapper"] = module_inputs
-		elif "DUPLEX" in material.upper():
-			process_inputs["Insert"] = {
-				"extracted_sheet_length_mm": sheet_length_mm,
-				"extracted_sheet_width_mm": sheet_width_mm,
-			}
+	if "KAPPA" in material.upper():
+		module_inputs = {}
+		if sheet_length_mm is not None:
+			module_inputs.update({"kappa_sheet_length_mm": sheet_length_mm, "kappa_sheet_width_mm": sheet_width_mm})
+		if fields["thickness_mm"]["normalized_value"] is not None:
+			module_inputs["kappa_thickness_mm"] = fields["thickness_mm"]["normalized_value"]
+		if fields["gsm_per_mm"]["normalized_value"] is not None:
+			module_inputs["kappa_gsm_at_1mm"] = fields["gsm_per_mm"]["normalized_value"]
+		if fields["ups"]["normalized_value"] is not None:
+			module_inputs["kappa_ups"] = int(fields["ups"]["normalized_value"])
+		process_inputs["Kappa"] = module_inputs
+	elif "ART PAPER" in material.upper():
+		module_inputs = {}
+		if sheet_length_mm is not None:
+			module_inputs.update({"wrapper_sheet_length_mm": sheet_length_mm, "wrapper_sheet_width_mm": sheet_width_mm})
+		if fields["gsm"]["normalized_value"] is not None:
+			module_inputs["wrapper_gsm"] = fields["gsm"]["normalized_value"]
+		if fields["ups"]["normalized_value"] is not None:
+			module_inputs["wrapper_ups"] = int(fields["ups"]["normalized_value"])
+		process_inputs["Wrapper"] = module_inputs
+	elif "DUPLEX" in material.upper():
+		module_inputs = {}
+		if fields["gsm"]["normalized_value"] is not None:
+			module_inputs["insert_gsm"] = fields["gsm"]["normalized_value"]
+		if fields["ups"]["normalized_value"] is not None:
+			module_inputs["insert_ups"] = int(fields["ups"]["normalized_value"])
+		if sheet_length_mm is not None:
+			module_inputs.update({"insert_sheet_length_mm": sheet_length_mm, "insert_sheet_width_mm": sheet_width_mm})
+		process_inputs["Insert"] = module_inputs
 	if "ART PAPER" in material.upper() and fields["gsm"]["normalized_value"] is not None:
 		process_inputs.setdefault("Wrapper", {})["wrapper_gsm"] = fields["gsm"]["normalized_value"]
 	if "Lamination" in raw_fields:

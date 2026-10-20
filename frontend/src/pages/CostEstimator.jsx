@@ -20,6 +20,15 @@ import { listCustomers, createCustomer, getMasterConfig, getNextQuotationNumber,
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 const STEPS = ['Layout & Component Extraction', 'Technical Data', 'Costing Modules', 'Summary & Margin', 'Quotation / Proforma'];
 const MM_PER_INCH = 25.4;
+const ESTIMATOR_DRAFT_KEY = 'pacfully_estimator_draft';
+
+function readEstimatorDraft() {
+  try {
+    return JSON.parse(window.sessionStorage.getItem(ESTIMATOR_DRAFT_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
 
 const mmToInches = value => Number(value) / MM_PER_INCH;
 const inchesToMm = value => Number(value) * MM_PER_INCH;
@@ -27,38 +36,32 @@ const inchesToMm = value => Number(value) * MM_PER_INCH;
 const MODULE_TABS = ['Kappa', 'Wrapper', 'Insert', 'Printing', 'Lamination', 'Glue', 'Punching', 'Embellishments', 'Accessories', 'Conversion', 'One Time Cost'];
 
 const INITIAL_FORM = {
-  quantity: 1000, margin_percent: 20,
+  quantity: '', margin_percent: '',
   components: [],
   layout_extraction: {},
-  kappa_material: 'Kappa Board', kappa_thickness_mm: 1.8, kappa_gsm_at_1mm: 1200, kappa_sheet_length_mm: 1000, kappa_sheet_width_mm: 700, kappa_ups: 2, kappa_wastage_percent: 10, kappa_rate_per_kg: 80,
-  fbb_rate_per_kg: 88, duplex_board_rate_per_kg: 72,
-  kappa_master_rate: 80, kappa_override_rate: null,
-  wrapper_gsm: 128, wrapper_ups: 1, wrapper_sheet_length_mm: 1000, wrapper_sheet_width_mm: 700, wrapper_wastage_percent: 10, wrapper_make_ready_sheets: 150, wrapper_rate_per_kg: 95,
-  wrapper_master_rate: 95, wrapper_override_rate: null,
-  print_method: 'Offset', print_colour_configuration: '4-Color CMYK', print_sheet_size: '28x40', print_master_rate: 6500, print_additional_rate: 0.8, print_override_rate: null,
-  lamination_type: 'thermal', lamination_finish: 'Matte', lamination_method_finish_rates: {}, lamination_sheet_length_in: 28, lamination_sheet_width_in: 40,
-  lam_master_rate: 1.10, lam_override_rate: null,
-  glue_lines: [
-    { name: 'Top Wrapper', area_sq_in: 620, gsm: 20, rate_per_kg: 90 },
-    { name: 'Bottom Wrapper', area_sq_in: 480, gsm: 20, rate_per_kg: 90 },
-  ],
-  punching_material: 'Kappa', punching_machine_rate_per_hour: 400, punching_speed: 400, punching_setup_hours: 0.5,
-  embellishment_area_sq_in: 24, embellishment_rate_per_sq_in: 2.5, embellishment_setup: 800, embellishment_minimum: 1000, embellishment_type: 'Gold Foil',
-  foiling_rate_per_100_sq_in: 3, spot_uv_rate_per_100_sq_in: 1, drip_off_rate_per_100_sq_in: null,
-  embossing_cost_per_box: 1, debossing_cost_per_box: 1,
-  punching_die_15x20: 1500, punching_die_20x28: 3000, punching_die_25x36: 4000, punching_die_28x40: 4000,
-  emboss_deboss_die_rate_per_sq_cm: 5, foil_stamp_die_rate_per_sq_cm: 5,
-  accessories: [
-    { name: 'Magnet Snap', quantity_per_box: 1, unit_cost: 3.5 },
-    { name: 'Ribbon', quantity_per_box: 1, unit_cost: 1.2 },
-  ],
-  conversion_machine_rate: 0, conversion_machine_hours: 0, conversion_labour_rate: 0, conversion_labour_hours: 0, conversion_setup: 0,
-  conversion_type: 'Semi Automatic', conversion_semi_boxes_per_hour: 400, conversion_semi_workers: 15,
-  conversion_monthly_salary: 15000, conversion_working_days: 25, conversion_hours_per_day: 8,
-  conversion_side_pasting_rate_per_box: 0.4, conversion_automatic_boxes_per_hour: 600,
-  conversion_automatic_machine_rate: 875, conversion_automatic_setup_rate: 645,
-  conversion_automatic_setup_hours: 4, conversion_contract_rate_per_box: 3,
-  eb_method: 'box', eb_value: 0,
+  kappa_material: '', kappa_thickness_mm: '', kappa_gsm_at_1mm: '', kappa_sheet_length_mm: '', kappa_sheet_width_mm: '', kappa_ups: '', kappa_wastage_percent: '', kappa_rate_per_kg: '',
+  fbb_rate_per_kg: '', duplex_board_rate_per_kg: '',
+  kappa_master_rate: null, kappa_override_rate: null,
+  wrapper_gsm: '', wrapper_ups: '', wrapper_sheet_length_mm: '', wrapper_sheet_width_mm: '', wrapper_wastage_percent: '', wrapper_make_ready_sheets: '', wrapper_rate_per_kg: '',
+  wrapper_master_rate: null, wrapper_override_rate: null,
+  print_method: '', print_colour_configuration: '', print_sheet_size: '', print_master_rate: null, print_additional_rate: null, print_override_rate: null,
+  lamination_type: '', lamination_finish: '', lamination_method_finish_rates: {}, lamination_sheet_length_in: '', lamination_sheet_width_in: '',
+  lam_master_rate: null, lam_override_rate: null,
+  glue_lines: [], glue_rate_per_kg: '',
+  punching_material: '', punching_machine_rate_per_hour: '', punching_speed: '', punching_setup_hours: '',
+  embellishment_area_sq_in: '', embellishment_rate_per_sq_in: '', embellishment_setup: '', embellishment_minimum: '', embellishment_type: '',
+  foiling_rate_per_100_sq_in: '', spot_uv_rate_per_100_sq_in: '', drip_off_rate_per_100_sq_in: '',
+  embossing_cost_per_box: '', debossing_cost_per_box: '',
+  punching_die_15x20: '', punching_die_20x28: '', punching_die_25x36: '', punching_die_28x40: '',
+  emboss_deboss_die_rate_per_sq_cm: '', foil_stamp_die_rate_per_sq_cm: '',
+  accessories: [],
+  conversion_machine_rate: '', conversion_machine_hours: '', conversion_labour_rate: '', conversion_labour_hours: '', conversion_setup: '',
+  conversion_type: '', conversion_base_material: 'Kappa', conversion_semi_boxes_per_hour: '', conversion_semi_workers: '',
+  conversion_monthly_salary: '', conversion_working_days: '', conversion_hours_per_day: '',
+  conversion_side_pasting_rate_per_box: '', conversion_automatic_boxes_per_hour: '',
+  conversion_automatic_machine_rate: '', conversion_automatic_setup_rate: '',
+  conversion_automatic_setup_hours: '', conversion_contract_rate_per_box: '',
+  eb_method: '', eb_value: '',
 };
 
 const PRINT_RATE_KEYS = {
@@ -71,11 +74,194 @@ const PUNCH_SPEED_KEYS = {
   Duplex: 'punching_speed_duplex', 'Foam/EVA/EPE': 'punching_speed_foam',
 };
 
+function baseMaterialRateKey(material) {
+  const normalized = material?.trim().toUpperCase() || '';
+  if (normalized.includes('FBB')) return 'fbb_rate_per_kg';
+  if (normalized.includes('DUPLEX')) return 'duplex_board_rate_per_kg';
+  return 'kappa_rate_per_kg';
+};
+
+function applyConfirmedDuplexSheetSize(component) {
+  if (
+    component.component_name?.trim().toUpperCase() !== 'INS-DUPLEX-01'
+    || component.material?.trim().toUpperCase() !== 'DUPLEX'
+  ) {
+    return component;
+  }
+
+  const sheetSize = component.extracted_fields?.sheet_size?.normalized_value;
+  const isConfirmedClientSheet = !sheetSize
+    || (sheetSize.unit == null && sheetSize.length === 30 && sheetSize.width === 20);
+  const dimensions = sheetSize?.unit === 'in'
+    ? { length: sheetSize.length * 25.4, width: sheetSize.width * 25.4 }
+    : sheetSize?.unit === 'mm'
+      ? { length: sheetSize.length, width: sheetSize.width }
+      : isConfirmedClientSheet
+        ? { length: 762, width: 508 }
+        : null;
+  if (!dimensions) return component;
+
+  const insertInputs = { ...(component.process_inputs?.Insert || {}) };
+  insertInputs.insert_sheet_length_mm ??= dimensions.length;
+  insertInputs.insert_sheet_width_mm ??= dimensions.width;
+  const normalizedSheetSize = {
+    length: dimensions.length / 25.4,
+    width: dimensions.width / 25.4,
+    unit: 'in',
+  };
+  return {
+    ...component,
+    process_inputs: { ...component.process_inputs, Insert: insertInputs },
+    extracted_fields: {
+      ...component.extracted_fields,
+      sheet_size: {
+        ...component.extracted_fields.sheet_size,
+        normalized_value: normalizedSheetSize,
+        review_status: 'User Confirmed',
+      },
+    },
+  };
+}
+
+function applyMasterRatesToForm(form, rates) {
+  const [printFirstKey, printAdditionalKey] = PRINT_RATE_KEYS[form.print_sheet_size] || [];
+  const materialRateKey = baseMaterialRateKey(form.kappa_material);
+  const punchingSpeedKey = PUNCH_SPEED_KEYS[form.punching_material];
+  const laminationType = form.lamination_type || 'thermal';
+  return {
+    ...form,
+    kappa_wastage_percent: rates.kappa_wastage_percent ?? '',
+    wrapper_wastage_percent: rates.wrapper_wastage_percent ?? '',
+    kappa_master_rate: rates[materialRateKey] ?? rates.kappa_rate_per_kg ?? null,
+    kappa_rate_per_kg: rates.kappa_rate_per_kg ?? '',
+    fbb_rate_per_kg: rates.fbb_rate_per_kg ?? '',
+    duplex_board_rate_per_kg: rates.duplex_board_rate_per_kg ?? '',
+    wrapper_master_rate: rates.wrapper_rate_per_kg ?? null,
+    wrapper_rate_per_kg: rates.wrapper_rate_per_kg ?? '',
+    wrapper_make_ready_sheets: rates.wrapper_make_ready_sheets ?? '',
+    print_master_rate: (printFirstKey ? rates[printFirstKey] : null) ?? form.print_master_rate,
+    print_additional_rate: (printAdditionalKey ? rates[printAdditionalKey] : null) ?? form.print_additional_rate,
+    lam_master_rate: rates[`lamination_${laminationType}`] ?? null,
+    lamination_type: laminationType,
+    lamination_method_finish_rates: Object.fromEntries(
+      ['thermal', 'cold', 'dry'].flatMap(method => ['matte', 'gloss', 'soft_touch', 'other'].map(finish => {
+        const key = `${method}_${finish}`;
+        return [key, rates[`lamination_rate_${key}`] ?? null];
+      })),
+    ),
+    glue_lines: form.glue_lines.map(line => ({ ...line, rate_per_kg: rates.glue_rate_per_kg ?? '' })),
+    glue_rate_per_kg: rates.glue_rate_per_kg ?? '',
+    punching_machine_rate_per_hour: rates.punching_machine_rate_per_hour ?? '',
+    punching_speed: punchingSpeedKey ? rates[punchingSpeedKey] ?? '' : form.punching_speed,
+    punching_setup_hours: rates.punching_setup_hours ?? '',
+    conversion_semi_boxes_per_hour: rates.conversion_semi_boxes_per_hour ?? '',
+    conversion_semi_workers: rates.conversion_semi_workers ?? '',
+    conversion_monthly_salary: rates.conversion_monthly_salary ?? '',
+    conversion_working_days: rates.conversion_working_days ?? '',
+    conversion_hours_per_day: rates.conversion_hours_per_day ?? '',
+    conversion_side_pasting_rate_per_box: rates.conversion_side_pasting_rate_per_box ?? '',
+    conversion_automatic_boxes_per_hour: rates.conversion_automatic_boxes_per_hour ?? '',
+    conversion_automatic_machine_rate: rates.conversion_automatic_machine_rate ?? '',
+    conversion_automatic_setup_rate: rates.conversion_automatic_setup_rate ?? '',
+    conversion_automatic_setup_hours: rates.conversion_automatic_setup_hours ?? '',
+    conversion_contract_rate_per_box: rates.conversion_contract_rate_per_box ?? '',
+    foiling_rate_per_100_sq_in: rates.foiling_rate_per_100_sq_in ?? '',
+    spot_uv_rate_per_100_sq_in: rates.spot_uv_rate_per_100_sq_in ?? '',
+    foam_insert_rate_per_10mm: rates.foam_insert_rate_per_10mm ?? 750,
+    foam_insert_fixed_rate_per_piece: rates.foam_insert_fixed_rate_per_piece ?? 0,
+    foam_insert_rate_per_kg: rates.foam_insert_rate_per_kg ?? 0,
+    embossing_cost_per_box: rates.embossing_cost_per_box ?? '',
+    debossing_cost_per_box: rates.debossing_cost_per_box ?? '',
+    punching_die_15x20: rates.punching_die_15x20 ?? '',
+    punching_die_20x28: rates.punching_die_20x28 ?? '',
+    punching_die_25x36: rates.punching_die_25x36 ?? '',
+    punching_die_28x40: rates.punching_die_28x40 ?? '',
+    emboss_deboss_die_rate_per_sq_cm: rates.emboss_deboss_die_rate_per_sq_cm ?? '',
+    foil_stamp_die_rate_per_sq_cm: rates.foil_stamp_die_rate_per_sq_cm ?? '',
+    embellishment_rate_per_sq_in: rates.embellishment_rate_per_sq_in ?? '',
+    embellishment_setup: rates.embellishment_setup ?? '',
+    embellishment_minimum: rates.embellishment_minimum ?? '',
+  };
+}
+
+function calculationPayload(form) {
+  const numericKeys = new Set([
+    'quantity', 'margin_percent', 'kappa_thickness_mm', 'kappa_gsm_at_1mm',
+    'kappa_sheet_length_mm', 'kappa_sheet_width_mm', 'kappa_ups', 'kappa_wastage_percent',
+    'kappa_rate_per_kg', 'fbb_rate_per_kg', 'duplex_board_rate_per_kg', 'kappa_master_rate',
+    'kappa_override_rate', 'insert_gsm', 'insert_ups', 'insert_sheet_length_mm',
+    'insert_sheet_width_mm', 'insert_thickness_mm', 'insert_quantity_per_box',
+    'insert_weight_g_per_piece', 'foam_insert_rate_per_10mm', 'foam_insert_fixed_rate_per_piece',
+    'foam_insert_rate_per_kg', 'wrapper_gsm', 'wrapper_ups', 'wrapper_sheet_length_mm',
+    'wrapper_sheet_width_mm', 'wrapper_wastage_percent', 'wrapper_make_ready_sheets',
+    'wrapper_rate_per_kg', 'wrapper_master_rate', 'wrapper_override_rate', 'print_master_rate',
+    'print_additional_rate', 'print_override_rate', 'lamination_sheet_length_in',
+    'lamination_sheet_width_in', 'lam_master_rate', 'lam_override_rate',
+    'punching_machine_rate_per_hour', 'punching_speed', 'punching_setup_hours',
+    'glue_area_sq_in', 'glue_gsm', 'glue_rate_per_kg', 'embellishment_area_sq_in',
+    'foiling_rate_per_100_sq_in', 'spot_uv_rate_per_100_sq_in', 'drip_off_rate_per_100_sq_in',
+    'embossing_cost_per_box', 'debossing_cost_per_box', 'accessory_quantity_per_box',
+    'accessory_unit_cost', 'conversion_semi_boxes_per_hour', 'conversion_semi_workers',
+    'conversion_monthly_salary', 'conversion_automatic_boxes_per_hour',
+    'conversion_automatic_machine_rate', 'conversion_automatic_setup_rate',
+    'conversion_automatic_setup_hours', 'conversion_contract_rate_per_box',
+  ]);
+  const normalize = (key, value) => {
+    if (value == null || (typeof value === 'string' && (!value.trim() || value.trim().toLowerCase() === 'inherit'))) {
+      return undefined;
+    }
+    if (numericKeys.has(key) && typeof value === 'string' && Number.isFinite(Number(value))) {
+      return Number(value);
+    }
+    if (numericKeys.has(key) && typeof value === 'number' && !Number.isFinite(value)) {
+      return undefined;
+    }
+    return value;
+  };
+  const payload = Object.fromEntries(Object.entries(form)
+    .map(([key, value]) => [key, normalize(key, value)])
+    .filter(([, value]) => value !== undefined));
+  for (const key of ['glue_lines', 'accessories']) {
+    if (!Array.isArray(payload[key])) continue;
+    payload[key] = payload[key].map(item => Object.fromEntries(
+      Object.entries(item)
+        .map(([itemKey, value]) => [itemKey, normalize(itemKey, value)])
+        .filter(([, value]) => value !== undefined),
+    ));
+  }
+  if (Array.isArray(payload.components)) {
+    payload.components = payload.components.map(component => {
+      const normalizedComponent = applyConfirmedDuplexSheetSize(component);
+      return {
+        ...component,
+        ...normalizedComponent,
+        process_inputs: Object.fromEntries(
+          Object.entries(normalizedComponent.process_inputs || {})
+            .map(([process, values]) => [process, Object.fromEntries(
+              Object.entries(values || {})
+                .map(([key, value]) => [key, normalize(key, value)])
+                .filter(([, value]) => value !== undefined),
+            )])
+            .filter(([, values]) => Object.keys(values).length),
+        ),
+      };
+    });
+  }
+  return payload;
+}
+
+function formatCalculationError(detail, fallback) {
+  if (!Array.isArray(detail)) return detail || fallback;
+  return detail.map(item => {
+    const location = Array.isArray(item.loc) ? item.loc.filter(part => part !== 'body').join('.') : '';
+    return `${location ? `${location}: ` : ''}${item.msg}`;
+  }).join('; ') || fallback;
+}
+
 function moduleInputs(module, form, wrapperFinalSheets) {
   const quantity = form.quantity;
   switch (module) {
     case 'Kappa':
-    case 'Insert':
       return {
         quantity,
         kappa_thickness_mm: form.kappa_thickness_mm,
@@ -83,11 +269,19 @@ function moduleInputs(module, form, wrapperFinalSheets) {
         kappa_sheet_length_mm: form.kappa_sheet_length_mm,
         kappa_sheet_width_mm: form.kappa_sheet_width_mm,
         kappa_ups: form.kappa_ups,
-        kappa_wastage_percent: form.kappa_wastage_percent,
+        ...(form.kappa_wastage_percent === '' ? {} : { kappa_wastage_percent: form.kappa_wastage_percent }),
         kappa_rate_per_kg: form.kappa_override_rate ?? form.kappa_master_rate,
         fbb_rate_per_kg: form.fbb_rate_per_kg,
         duplex_board_rate_per_kg: form.duplex_board_rate_per_kg,
         kappa_master_rate: form.kappa_master_rate,
+        kappa_override_rate: form.kappa_override_rate,
+      };
+    case 'Insert':
+      return {
+        quantity,
+        ...(form.kappa_wastage_percent === '' ? {} : { kappa_wastage_percent: form.kappa_wastage_percent }),
+        duplex_board_rate_per_kg: form.duplex_board_rate_per_kg,
+        fbb_rate_per_kg: form.fbb_rate_per_kg,
         kappa_override_rate: form.kappa_override_rate,
       };
     case 'Wrapper':
@@ -97,7 +291,7 @@ function moduleInputs(module, form, wrapperFinalSheets) {
         wrapper_ups: form.wrapper_ups,
         wrapper_sheet_length_mm: form.wrapper_sheet_length_mm,
         wrapper_sheet_width_mm: form.wrapper_sheet_width_mm,
-        wrapper_wastage_percent: form.wrapper_wastage_percent,
+        ...(form.wrapper_wastage_percent === '' ? {} : { wrapper_wastage_percent: form.wrapper_wastage_percent }),
         wrapper_make_ready_sheets: form.wrapper_make_ready_sheets,
         wrapper_rate_per_kg: form.wrapper_override_rate ?? form.wrapper_master_rate,
         wrapper_master_rate: form.wrapper_master_rate,
@@ -122,7 +316,7 @@ function moduleInputs(module, form, wrapperFinalSheets) {
         lam_override_rate: form.lam_override_rate,
       };
     case 'Glue':
-      return { quantity, glue_lines: form.glue_lines };
+      return { quantity, glue_lines: form.glue_lines, glue_rate_per_kg: form.glue_rate_per_kg };
     case 'Punching':
       return {
         quantity, punching_material: form.punching_material,
@@ -152,6 +346,7 @@ function moduleInputs(module, form, wrapperFinalSheets) {
       return {
         quantity,
         conversion_type: form.conversion_type,
+        conversion_base_material: form.conversion_base_material,
         conversion_semi_boxes_per_hour: form.conversion_semi_boxes_per_hour,
         conversion_semi_workers: form.conversion_semi_workers,
         conversion_monthly_salary: form.conversion_monthly_salary,
@@ -180,7 +375,7 @@ function moduleInputs(module, form, wrapperFinalSheets) {
 }
 
 // ── Field Component ────────────────────────────────────────
-function Field({ label, value, onChange, type = 'number', options, readOnly, preserveInput = false, step, onBlur }) {
+function Field({ label, value, onChange, type = 'number', options, suggestions, placeholder, readOnly, preserveInput = false, step, onBlur }) {
   return (
     <div className="form-group">
       <label className="form-label">{label}</label>
@@ -193,15 +388,24 @@ function Field({ label, value, onChange, type = 'number', options, readOnly, pre
           })}
         </select>
       ) : (
-        <input
-          className="form-input"
-          type={type}
-          step={step}
-          value={value}
-          readOnly={readOnly}
-          onChange={e => onChange?.(preserveInput ? e.target.value : type === 'number' && e.target.value !== '' ? Number(e.target.value) : e.target.value)}
-          onBlur={onBlur}
-        />
+        <>
+          <input
+            className="form-input"
+            type={type}
+            step={step}
+            list={suggestions?.length ? 'print-colour-configuration-suggestions' : undefined}
+            placeholder={placeholder}
+            value={value}
+            readOnly={readOnly}
+            onChange={e => onChange?.(preserveInput ? e.target.value : type === 'number' && e.target.value !== '' ? Number(e.target.value) : e.target.value)}
+            onBlur={onBlur}
+          />
+          {suggestions?.length > 0 && (
+            <datalist id="print-colour-configuration-suggestions">
+              {suggestions.map(option => <option key={option} value={option} />)}
+            </datalist>
+          )}
+        </>
       )}
     </div>
   );
@@ -236,13 +440,6 @@ function SheetDimensionField({ label, valueMm, onChange }) {
 }
 
 // ── Step 1: Layout Upload + Component Extraction ─────────
-const DEMO_CUSTOMERS = [
-  { name: 'Luxe Beauty Pvt Ltd' },
-  { name: 'Aura Skincare' },
-  { name: 'Veda Naturals' },
-  { name: 'Elite Brands' },
-];
-
 function AddCustomerModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ name: '', contact: '', email: '', phone: '', city: '', state: '', address: '', gst_number: '' });
   const [saving, setSaving] = useState(false);
@@ -317,7 +514,7 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName, compon
   const [extracting, setExtracting] = useState(false);
   const [extracted, setExtracted] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [customers, setCustomers] = useState(DEMO_CUSTOMERS);
+  const [customers, setCustomers] = useState([]);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
   const [extractionNotice, setExtractionNotice] = useState('');
@@ -331,7 +528,6 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName, compon
       if (!active) return;
       const rows = Array.isArray(data) ? data : [];
       setCustomers(rows);
-      setCustomer(current => rows.some(row => row.name === current) ? current : (rows[0]?.name || ''));
     }).catch(() => {});
     return () => { active = false; };
   }, [setCustomer]);
@@ -403,7 +599,8 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName, compon
             <label className="form-label">Customer</label>
             <div style={{ position: 'relative' }}>
               <select className="form-select" value={customer} onChange={e => setCustomer(e.target.value)}>
-                {!customers.length && <option value="">Select a customer</option>}
+                <option value="">Select a customer</option>
+                {customer && !customers.some(row => row.name === customer) && <option value={customer}>{customer}</option>}
                 {customers.map((row, index) => <option key={row.id ?? row.name ?? index} value={row.name}>{row.name}</option>)}
               </select>
             </div>
@@ -577,13 +774,34 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName, compon
       </div>
       {showDimensions && (
         <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setShowDimensions(false); }}>
-          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="derived-dimensions-title" style={{ width: 420 }}>
+          <section className="modal dimension-review-modal" role="dialog" aria-modal="true" aria-labelledby="derived-dimensions-title">
             <div className="modal-header">
               <div><span className="eyebrow">Layout review</span><h2 id="derived-dimensions-title">Dimension status</h2></div>
               <button className="modal-close" type="button" aria-label="Close dimensions" onClick={() => setShowDimensions(false)}><X size={16} /></button>
             </div>
-            <p><strong>Finished box size:</strong> {layoutData?.document_fields?.finished_box_size?.value || 'Confirmation Required'}</p>
-            <p><strong>Drawing dimensions:</strong> {layoutData?.layout_dimensions?.length ? layoutData.layout_dimensions.map(field => field.value).join(', ') : 'No explicit dimensions extracted.'}</p>
+            <div className="dimension-finished-size">
+              <span>Finished box size</span>
+              <strong>{layoutData?.document_fields?.finished_box_size?.value || 'Confirmation Required'}</strong>
+            </div>
+            <div className="dimension-table-wrap">
+              {layoutData?.layout_dimensions?.length ? (
+                <table className="dimension-table">
+                  <thead><tr><th scope="col">No.</th><th scope="col">Extracted dimension</th><th scope="col">Page</th><th scope="col">Status</th></tr></thead>
+                  <tbody>
+                    {layoutData.layout_dimensions.map((field, index) => (
+                      <tr key={`${field.page || 'page'}-${index}`}>
+                        <td>{index + 1}</td>
+                        <td className="dimension-value">{field.value}</td>
+                        <td>{field.page || '-'}</td>
+                        <td><span className="pill pill-required">{field.review_status || 'Review Required'}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="dimension-empty">No explicit dimensions extracted.</p>
+              )}
+            </div>
             <p>Confirm units and component associations before costing. Extracted component values are available in Technical Data Review and module overrides.</p>
             <div className="modal-footer"><button className="btn btn-primary" type="button" onClick={() => setShowDimensions(false)}>Done</button></div>
           </section>
@@ -596,8 +814,8 @@ function StepLayout({ onNext, customer, setCustomer, jobName, setJobName, compon
 
 // ── Step 2: Technical Data Review ─────────────────────────
 function StepTechnicalData({ form, setForm, components, onComponentsChange, onNext, onBack }) {
-  const [notes, setNotes] = useState('');
   const documentFields = form.layout_extraction?.document_fields || {};
+  const layoutDimensions = form.layout_extraction?.layout_dimensions || [];
   const finishedSize = documentFields.finished_box_size?.normalized_value;
   const previewDimensionLabel = finishedSize
     ? `${finishedSize.length} x ${finishedSize.width} x ${finishedSize.height} mm`
@@ -610,18 +828,30 @@ function StepTechnicalData({ form, setForm, components, onComponentsChange, onNe
     project_name: 'Project Name', customer_name: 'Customer / Brand', product_name: 'Product Name',
     box_type: 'Box Type', finished_box_size: 'Finished Box Size', revision: 'Revision', drawing_version: 'Drawing Version', prepared_date: 'Prepared Date',
   };
-  const documentRows = Object.entries(documentLabels)
-    .filter(([key]) => documentFields[key]?.value)
-    .map(([key, label]) => [label, documentFields[key].value, sourceDescription(documentFields[key]), documentFields[key].review_status || 'Review Required']);
-  const technicalRows = [
-    ['Order Quantity', documentFields.quantity?.value || Number(form.quantity || 0).toLocaleString(), documentFields.quantity ? sourceDescription(documentFields.quantity) : 'Estimate form', documentFields.quantity?.review_status || 'Ready'],
-    ...documentRows,
-    ['Base Material', form.kappa_material, 'Costing inputs', 'Review in module'],
-    ['Base Material GSM / Thickness', `${form.kappa_gsm_at_1mm} GSM / ${form.kappa_thickness_mm} mm`, 'Costing inputs', 'Review in module'],
-    ['Wrapper GSM', `${form.wrapper_gsm} GSM`, 'Costing inputs', 'Review in module'],
-    ['Printing Method / Colour', `${form.print_method} / ${form.print_colour_configuration}`, 'Costing inputs', 'Review in module'],
-    ['Lamination Method / Finish', `${form.lamination_type} / ${form.lamination_finish}`, 'Costing inputs', 'Review in module'],
-    ...components.flatMap(component => {
+  const documentRows = [
+    {
+      label: 'Order Quantity',
+      value: documentFields.quantity?.value || Number(form.quantity || 0).toLocaleString(),
+      source: documentFields.quantity ? sourceDescription(documentFields.quantity) : 'Estimate form',
+      status: documentFields.quantity?.review_status || 'Ready',
+    },
+    ...Object.entries(documentLabels)
+      .filter(([key]) => documentFields[key]?.value)
+      .map(([key, label]) => ({
+        label,
+        value: documentFields[key].value,
+        source: sourceDescription(documentFields[key]),
+        status: documentFields[key].review_status || 'Review Required',
+      })),
+  ];
+  const estimateRows = [
+    { label: 'Base Material', value: form.kappa_material },
+    { label: 'Base Material GSM / Thickness', value: `${form.kappa_gsm_at_1mm} GSM / ${form.kappa_thickness_mm} mm` },
+    { label: 'Wrapper GSM', value: `${form.wrapper_gsm} GSM` },
+    { label: 'Printing Method / Colour', value: `${form.print_method} / ${form.print_colour_configuration}` },
+    { label: 'Lamination Method / Finish', value: `${form.lamination_type} / ${form.lamination_finish}` },
+  ];
+  const componentGroups = components.map(component => {
       const enabled = Object.entries(component.processes || {}).filter(([, value]) => value === true).map(([process]) => process);
       const materialName = component.material?.toUpperCase() || '';
       const criticalFields = ['sheet_size', 'ups'];
@@ -633,100 +863,90 @@ function StepTechnicalData({ form, setForm, components, onComponentsChange, onNe
         .filter(([key, field]) => key !== 'component_name' && key !== 'material' && (
           field?.value != null || criticalFields.includes(key)
         ))
-        .map(([key, field]) => [
-          `${component.component_name} · ${key.startsWith('process_') ? key.slice(8) : ({ sheet_size: 'Sheet Size', gsm_per_mm: 'GSM per 1 mm', thickness_mm: 'Thickness', gsm: 'GSM', ups: 'UPS' }[key] || key)}`,
-          field.value || 'Confirmation Required',
-          field.source === 'not_found' ? `Not found in PDF${field.page ? ` · p.${field.page}` : ''}` : sourceDescription(field),
-          field.review_status || 'Confirmation Required',
-        ]);
-      return [
-        [
-          `${component.component_name}_${component.material}`,
-          enabled.length ? enabled.join(', ') : 'No process marked YES',
-          component.source === 'pdf_text' ? `PDF · p.${component.source_page || '?' } · ${Math.round((component.confidence || 0) * 100)}%` : 'Manual entry',
-          enabled.length ? 'Review matrix' : 'Confirm routing',
-        ],
-        ...extractedRows,
-      ];
-    }),
-  ];
+        .map(([key, field]) => ({
+          label: key.startsWith('process_')
+            ? key.slice(8)
+            : ({ sheet_size: 'Sheet Size', gsm_per_mm: 'GSM per 1 mm', thickness_mm: 'Thickness', gsm: 'GSM', ups: 'UPS' }[key] || key.replaceAll('_', ' ')),
+          value: field.value ?? 'Confirmation Required',
+          source: field.source === 'not_found' ? `Not found in PDF${field.page ? ` · p.${field.page}` : ''}` : sourceDescription(field),
+          status: field.review_status || 'Confirmation Required',
+        }));
+      return {
+        name: component.component_name,
+        material: component.material,
+        processes: enabled.length ? enabled.join(', ') : 'No process marked YES',
+        source: component.source_page
+          ? `PDF · p.${component.source_page}${component.confidence ? ` · ${Math.round(component.confidence * 100)}%` : ''}`
+          : 'Manual entry',
+        routingStatus: enabled.length ? 'Review routing' : 'Confirm routing',
+        fields: extractedRows,
+      };
+    });
 
   return (
-    <div>
-      <div className="grid-col-6-4" style={{ gap: 16 }}>
-        {/* Fields table */}
-        <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
-            <div className="panel-title">Technical Data Review</div>
-            <div className="panel-sub">Current estimate inputs and component data from the shared process matrix</div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Parameter</th>
-                <th style={{ textAlign: 'right' }}>Current Value</th>
-                <th>Source</th>
-                <th>Review Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {technicalRows.map(([label, value, source, status]) => (
-                <tr key={label}>
-                  <td style={{ fontWeight: 500, fontSize: 12 }}>{label}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'Manrope', fontWeight: 600, fontSize: 12 }}>{value}</td>
-                  <td style={{ fontSize: 11, color: 'var(--muted)' }}>{source}</td>
-                  <td><span className={status.startsWith('Confirm') ? 'pill pill-required' : 'pill pill-confirmed'} style={{ fontSize: 10 }}>{status}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div className="technical-review-page">
+      <div className="technical-review-heading">
+        <div>
+          <div className="panel-title">Technical Data Review</div>
+          <div className="panel-sub">Extracted values and current estimate inputs, grouped by topic</div>
         </div>
-
-        {/* Right panel */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Layout thumbnail */}
-          <div className="panel">
-            <div className="panel-title" style={{ marginBottom: 12 }}>Layout Thumbnail</div>
-            <div style={{ background: '#FFFAF8', border: '1px solid var(--orange-border)', borderRadius: 8, padding: 16, display: 'flex', justifyContent: 'center' }}>
-              <svg width="160" height="110" viewBox="0 0 220 130">
-                <rect x="40" y="30" width="140" height="70" fill="#FFF1ED" stroke="#FF5A3A" strokeWidth="1.5" strokeDasharray="4,3" rx="2" />
-                <rect x="40" y="0" width="140" height="30" fill="#FFE8E2" stroke="#FF7A5C" strokeWidth="1" rx="1" />
-                <rect x="40" y="100" width="140" height="30" fill="#FFE8E2" stroke="#FF7A5C" strokeWidth="1" rx="1" />
-                <rect x="0" y="30" width="40" height="70" fill="#FFF8F5" stroke="#FF7A5C" strokeWidth="1" rx="1" />
-                <rect x="180" y="30" width="40" height="70" fill="#FFF8F5" stroke="#FF7A5C" strokeWidth="1" rx="1" />
-                <text x="110" y="68" textAnchor="middle" fontSize="11" fill="#FF5A3A" fontFamily="Manrope" fontWeight="600">{previewDimensionLabel}</text>
-              </svg>
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div className="panel">
-            <div className="panel-title" style={{ marginBottom: 10 }}>Notes</div>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Add any additional notes or corrections..."
-              style={{
-                width: '100%', minHeight: 90, border: '1px solid var(--line)',
-                borderRadius: 7, padding: 10, fontSize: 12, fontFamily: 'Inter',
-                outline: 'none', resize: 'vertical', color: 'var(--ink)',
-              }}
-            />
-          </div>
-
-          {/* Warnings */}
-          <div className="warn-banner">
-            <AlertCircle size={15} />
-            <div>
-              <strong style={{ fontSize: 12 }}>{components.length ? 'Review component and process data' : 'No components are available yet'}</strong>
-              <div style={{ fontSize: 11, marginTop: 2 }}>Confirm the matrix values before calculating costs. Only YES processes create costing rows.</div>
-            </div>
-          </div>
-        </div>
+        {finishedSize && <div className="technical-finished-size"><span>Finished box</span><strong>{previewDimensionLabel}</strong></div>}
       </div>
 
-      <div style={{ marginTop: 16 }}>
-        <ComponentProcessMatrix components={components} onChange={onComponentsChange} title="Confirmed Component–Process Matrix" />
+      <div className="technical-review-grid">
+        <section className="technical-topic-card">
+          <h3>Document Details</h3>
+          <div className="technical-value-grid">
+            {documentRows.map(item => <TechnicalValue key={item.label} item={item} />)}
+          </div>
+        </section>
+
+        <section className="technical-topic-card">
+          <h3>Drawing Dimensions</h3>
+          {layoutDimensions.length ? (
+            <div className="technical-value-grid">
+              {layoutDimensions.map((field, index) => (
+                <TechnicalValue
+                  key={`${field.page || 'page'}-${index}`}
+                  item={{ label: `Dimension ${index + 1}`, value: field.value, source: sourceDescription(field), status: field.review_status || 'Review Required' }}
+                />
+              ))}
+            </div>
+          ) : <p className="technical-empty">No drawing dimensions extracted.</p>}
+        </section>
+
+        <section className="technical-topic-card">
+          <h3>Estimate Inputs</h3>
+          <div className="technical-value-grid">
+            {estimateRows.map(item => <TechnicalValue key={item.label} item={{ ...item, source: 'Costing inputs', status: 'Review in module' }} />)}
+          </div>
+        </section>
+
+        <section className="technical-topic-card technical-components-topic">
+          <h3>Components</h3>
+          {componentGroups.length ? (
+            <div className="technical-component-grid">
+              {componentGroups.map(component => (
+                <article className="technical-component-card" key={`${component.name}-${component.material}`}>
+                  <div className="technical-component-heading">
+                    <div><strong>{component.name}</strong><span>{component.material}</span></div>
+                    <span className="technical-source">{component.source}</span>
+                  </div>
+                  <div className="technical-routing-row">
+                    <span>Confirmed processes</span>
+                    <strong>{component.processes}</strong>
+                    <span className="technical-status">{component.routingStatus}</span>
+                  </div>
+                  {component.fields.length > 0 && (
+                    <div className="technical-value-grid technical-component-values">
+                      {component.fields.map((item, index) => <TechnicalValue key={`${item.label}-${index}`} item={item} />)}
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          ) : <p className="technical-empty">No components extracted.</p>}
+        </section>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
@@ -741,21 +961,109 @@ function StepTechnicalData({ form, setForm, components, onComponentsChange, onNe
   );
 }
 
+function TechnicalValue({ item }) {
+  const needsReview = /required|confirm|review/i.test(item.status || '');
+  return (
+    <div className="technical-value-item">
+      <div className="technical-value-top">
+        <span className="technical-value-label">{item.label}</span>
+        <span className={`technical-status-pill${needsReview ? ' needs-review' : ''}`}>{item.status}</span>
+      </div>
+      <strong className="technical-value-content">{item.value ?? '-'}</strong>
+      <span className="technical-value-source">{item.source}</span>
+    </div>
+  );
+}
+
 // ── Step 3: Costing Modules ────────────────────────────────
-function StepCostingModules({ form, setForm, masterRates, result, moduleResults, onCalculate, onCalculateModule, calculatingAll, calculatingModule, components, onComponentsChange, onNext, onBack }) {
+function StepCostingModules({ form, setForm, masterRates, result, moduleResults, onCalculate, onCalculateModule, calculatingAll, calculatingModule, components, onComponentsChange, onInputsChanged, calculationError, onNext, onBack }) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [componentCalculation, setComponentCalculation] = useState(null);
+  const [calculatingComponent, setCalculatingComponent] = useState(false);
+  const [calculationDetailsOpen, setCalculationDetailsOpen] = useState(false);
   const requestedModule = searchParams.get('module');
   const activeTab = MODULE_TABS.includes(requestedModule) ? requestedModule : 'Kappa';
+  const activeTabIndex = MODULE_TABS.indexOf(activeTab);
   const selectTab = (module) => {
     if (module === activeTab) return;
+    setCalculationDetailsOpen(false);
     setSearchParams(params => {
       params.set('module', module);
       return params;
     });
   };
-  const update = (key, val) => setForm(f => ({ ...f, [key]: val }));
-  const line = moduleResults[activeTab] ?? result?.lines?.find(l => l.module === activeTab);
+  const handleBack = () => {
+    if (activeTabIndex > 0) {
+      selectTab(MODULE_TABS[activeTabIndex - 1]);
+      return;
+    }
+    onBack();
+  };
+  const update = (key, val) => {
+    setForm(current => ({ ...current, [key]: val }));
+    onInputsChanged();
+  };
+  const updateComponentInputs = nextComponents => {
+    onComponentsChange(nextComponents);
+    setComponentCalculation(null);
+    setCalculationDetailsOpen(false);
+  };
+  const calculateModuleComponents = async () => {
+    const module = activeTab;
+    const moduleLabel = module === 'Kappa' ? 'Base Material' : module;
+    setCalculationDetailsOpen(true);
+    setCalculatingComponent(true);
+    setComponentCalculation({ module, loading: true });
+    try {
+      const response = await fetch(`${API_BASE}/estimates/calculate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(calculationPayload({ ...form, components })),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(formatCalculationError(error.detail, `Unable to calculate ${moduleLabel} components`));
+      }
+      const data = await response.json();
+      const moduleLine = data.lines?.find(item => item.module === module);
+      const failures = [
+        ...(moduleLine?.configuration_required || []),
+        ...(data.configuration_details || []).filter(item => item.module === module),
+      ].filter((failure, index, items) => items.findIndex(item =>
+        item.component_label === failure.component_label
+        && item.process === failure.process
+        && item.detail === failure.detail,
+      ) === index);
+      setComponentCalculation({
+        module,
+        lines: moduleLine?.component_lines || [],
+        failures,
+        error: !moduleLine && !failures.length ? `${moduleLabel} calculation is not available.` : null,
+      });
+    } catch (error) {
+      setComponentCalculation({ module, error: error.message || `${moduleLabel} calculation failed.` });
+    } finally {
+      setCalculatingComponent(false);
+    }
+  };
+  const line = Object.prototype.hasOwnProperty.call(moduleResults, activeTab)
+    ? moduleResults[activeTab]
+    : result?.lines?.find(l => l.module === activeTab);
   const applicableComponents = componentsForModule(components, activeTab);
+  const moduleConfigurationDetails = [
+    ...(moduleResults[activeTab]?.configuration_required || []),
+    ...(result?.configuration_details || []).filter(detail => detail.module === activeTab),
+  ].filter((detail, index, details) => details.findIndex(item =>
+    item.component_label === detail.component_label
+    && item.process === detail.process
+    && item.detail === detail.detail,
+  ) === index);
+  const hasLegacyGlueInputs = activeTab === 'Glue' && applicableComponents.length === 0;
+  const baseMaterialName = form.kappa_material || applicableComponents[0]?.material || 'Kappa Board';
+  const baseMaterialRateKeyValue = baseMaterialRateKey(baseMaterialName);
+  const baseMaterialMasterRate = masterRates?.[baseMaterialRateKeyValue]
+    ?? (baseMaterialRateKeyValue === 'kappa_rate_per_kg' ? form.kappa_master_rate : form[baseMaterialRateKeyValue]);
+  const effectiveBaseMaterialRate = form.kappa_override_rate ?? baseMaterialMasterRate;
 
   const tabIcons = {
     Kappa: Layers, Wrapper: Box, Insert: Layers, Printing: Printer, Lamination: Layers,
@@ -768,7 +1076,7 @@ function StepCostingModules({ form, setForm, masterRates, result, moduleResults,
       {/* Top calculate bar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 16, fontSize: 13, color: 'var(--muted)' }}>
-          <span>Order Qty: <strong style={{ color: 'var(--ink-2)', fontFamily: 'Manrope', fontSize: 22, fontWeight: 800, lineHeight: 1 }}>{form.quantity.toLocaleString()}</strong></span>
+          <span>Order Qty: <strong style={{ color: 'var(--ink-2)', fontFamily: 'Manrope', fontSize: 22, fontWeight: 800, lineHeight: 1 }}>{Number(form.quantity || 0).toLocaleString()}</strong></span>
           {result && <span>Cost/Box: <strong style={{ color: 'var(--orange)' }}>₹ {result.cost_per_box?.toFixed(2)}</strong></span>}
           {!['Conversion', 'One Time Cost'].includes(activeTab) && line?.unit_cost != null && (
             <span>
@@ -782,7 +1090,7 @@ function StepCostingModules({ form, setForm, masterRates, result, moduleResults,
           <button
             className="btn btn-primary"
             onClick={() => onCalculateModule(activeTab)}
-            disabled={calculatingAll || calculatingModule !== null || applicableComponents.length === 0}
+            disabled={calculatingAll || calculatingModule !== null || (applicableComponents.length === 0 && !hasLegacyGlueInputs)}
           >
             <Calculator size={14} /> {calculatingModule === activeTab ? 'Calculating...' : `${activeTab === 'Kappa' ? 'Base Material' : activeTab} Calculate`}
           </button>
@@ -801,32 +1109,95 @@ function StepCostingModules({ form, setForm, masterRates, result, moduleResults,
         ))}
       </div>
 
+      {activeTab === 'One Time Cost' && (
+        <div style={{ margin: '14px 0' }}>
+          <ComponentProcessMatrix
+            components={components}
+            onChange={updateComponentInputs}
+            title="Confirmed Component–Process Matrix"
+          />
+        </div>
+      )}
+
       <div className="info-banner" style={{ marginBottom: 14 }}>
         <span><strong>{applicableComponents.length} applicable component{applicableComponents.length === 1 ? '' : 's'}:</strong> {applicableComponents.length ? applicableComponents.map(component => `${component.component_name}_${component.material}`).join(', ') : 'No component is marked YES for this process.'}</span>
       </div>
-      <ComponentProcessInputs module={activeTab} components={components} onChange={onComponentsChange} />
+      {calculationError && <div className="warn-banner" role="alert" style={{ marginBottom: 14 }}>{calculationError}</div>}
+      {moduleConfigurationDetails.length > 0 && (
+        <div className="warn-banner" style={{ marginBottom: 14 }}>
+          <div>
+            <strong>{activeTab === 'Kappa' ? 'Base Material' : activeTab} configuration required:</strong>
+            <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+              {moduleConfigurationDetails.map((detail, index) => (
+                <li key={`${detail.component_label}-${detail.process}-${index}`}>
+                  {detail.component_label ? `${detail.component_label}: ` : ''}
+                  {detail.detail}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      {activeTab === 'Kappa' && (
+        <div className="panel" style={{ marginBottom: 14, padding: 14 }}>
+          <div className="form-label" style={{ marginBottom: 8 }}>
+            Rate Configuration (₹/kg) · {baseMaterialName}
+          </div>
+          <RateConfigRow
+            masterRate={baseMaterialMasterRate == null ? null : Number(baseMaterialMasterRate)}
+            overrideRate={form.kappa_override_rate}
+            effectiveRate={effectiveBaseMaterialRate == null ? null : Number(effectiveBaseMaterialRate)}
+            onOverrideChange={value => update('kappa_override_rate', value)}
+            onReset={() => update('kappa_override_rate', null)}
+          />
+        </div>
+      )}
+      <ComponentProcessInputs
+        module={activeTab}
+        masterRates={masterRates || {}}
+        estimateDefaults={form}
+        sharedOverrideRate={form.kappa_override_rate}
+        components={components}
+        onChange={updateComponentInputs}
+        onCalculateModuleComponents={calculateModuleComponents}
+        componentCalculation={componentCalculation}
+        calculatingComponent={calculatingComponent}
+        calculationDetailsOpen={calculationDetailsOpen}
+        onCloseCalculationDetails={() => setCalculationDetailsOpen(false)}
+      />
 
-      {/* Module panels */}
-      {activeTab === 'Kappa' && <KappaModule form={form} update={update} masterRates={masterRates} line={line} />}
-      {activeTab === 'Insert' && <KappaModule form={form} update={update} masterRates={masterRates} line={line} title="Insert Costing Details" />}
-      {activeTab === 'Wrapper' && <WrapperModule form={form} update={update} line={line} />}
-      {activeTab === 'Printing' && <PrintingModule form={form} update={update} masterRates={masterRates} line={line} />}
-      {activeTab === 'Lamination' && <LaminationModule form={form} update={update} masterRates={masterRates} line={line} />}
-      {activeTab === 'Glue' && <GlueModule form={form} update={update} masterRates={masterRates} line={line} />}
-      {activeTab === 'Punching' && <PunchingModule form={form} update={update} masterRates={masterRates} line={line} />}
-      {activeTab === 'Embellishments' && <EmbellishmentsModule form={form} update={update} line={line} />}
-      {activeTab === 'Accessories' && <AccessoriesModule form={form} update={update} line={line} />}
-      {activeTab === 'Conversion' && <ConversionModule form={form} update={update} line={line} />}
-      {activeTab === 'One Time Cost' && (
-        <>
-          <ComponentProcessMatrix components={components} onChange={onComponentsChange} title="Tooling and Die Costing" />
-          {line && <div style={{ marginTop: 12 }}><ModuleResultCard line={line} /></div>}
-        </>
+      {/* Keep legacy module-only forms when no component rows are routed to this module. */}
+      {!applicableComponents.length && activeTab === 'Insert' && <InsertModule line={line} />}
+      {!applicableComponents.length && activeTab === 'Wrapper' && <WrapperModule form={form} update={update} line={line} />}
+      {!applicableComponents.length && activeTab === 'Printing' && <PrintingModule form={form} update={update} masterRates={masterRates} line={line} />}
+      {!applicableComponents.length && activeTab === 'Lamination' && <LaminationModule form={form} update={update} masterRates={masterRates} line={line} />}
+      {!applicableComponents.length && activeTab === 'Glue' && <GlueModule form={form} update={update} masterRates={masterRates} line={line} />}
+      {!applicableComponents.length && activeTab === 'Punching' && <PunchingModule form={form} update={update} masterRates={masterRates} line={line} />}
+      {!applicableComponents.length && activeTab === 'Embellishments' && <EmbellishmentsModule form={form} update={update} line={line} />}
+      {!applicableComponents.length && activeTab === 'Accessories' && <AccessoriesModule form={form} update={update} line={line} />}
+      {!applicableComponents.length && activeTab === 'Conversion' && <ConversionModule form={form} update={update} line={line} />}
+      {!applicableComponents.length && activeTab === 'One Time Cost' && line && (
+        <div className="panel">
+          <div className="panel-header">
+            <div>
+              <div className="panel-title">Tooling Costing Summary</div>
+              <div className="panel-sub">Die charges are shown separately from recurring manufacturing costs.</div>
+            </div>
+          </div>
+          <div className="grid-col-6-4" style={{ gap: 16 }}>
+            <CalcTracePanel rows={line.trace.map(item => ({ label: item.label, value: item.value }))} formula={line.formula} />
+            <ModuleResultCard line={line} />
+          </div>
+        </div>
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
-        <button className="btn btn-secondary" onClick={onBack}><ArrowLeft size={15} /> Back</button>
-        <button className="btn btn-primary" onClick={onNext}>Continue to Summary <ArrowRight size={15} /></button>
+        <button className="btn btn-secondary" onClick={handleBack}>
+          <ArrowLeft size={15} /> {activeTabIndex > 0 ? `Back to ${MODULE_TABS[activeTabIndex - 1] === 'Kappa' ? 'Base Material' : MODULE_TABS[activeTabIndex - 1]}` : 'Back to Technical Data'}
+        </button>
+        <button className="btn btn-primary" onClick={onNext} disabled={calculatingAll || calculatingModule !== null}>
+          Continue to Summary <ArrowRight size={15} />
+        </button>
       </div>
     </div>
   );
@@ -867,55 +1238,20 @@ function ModuleResultCard({ line }) {
   );
 }
 
-// ── Kappa Module ───────────────────────────────────────────
-function KappaModule({ form, update, masterRates, line, title = 'Base Material Costing Details' }) {
-  const effectiveRate = form.kappa_override_rate ?? form.kappa_master_rate;
+// ── Insert Module ──────────────────────────────────────────
+function InsertModule({ line }) {
   return (
     <div className="panel" style={{ marginBottom: 0 }}>
       <div className="panel-header">
         <div>
-          <div className="panel-title">{title}</div>
-          <div className="panel-sub">Board material costing — Effective GSM = GSM@1mm × Thickness</div>
+          <div className="panel-title">Insert Costing Details</div>
+          <div className="panel-sub">Insert cost = sheet area × GSM × required sheets × material rate</div>
         </div>
         {line && <span className="pill pill-confirmed">Calculated</span>}
       </div>
-
-      <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Base Material Type" options={[{ value: 'Kappa Board', label: 'Base Material' }, 'FBB', 'Duplex Board']} value={form.kappa_material} onChange={value => {
-          const rateKey = { 'Kappa Board': 'kappa_rate_per_kg', FBB: 'fbb_rate_per_kg', 'Duplex Board': 'duplex_board_rate_per_kg' }[value];
-          const rate = masterRates?.[rateKey] ?? form.kappa_master_rate;
-          update('kappa_material', value);
-          update('kappa_master_rate', rate);
-          update('kappa_rate_per_kg', rate);
-        }} />
-        <Field label="GSM" value={form.kappa_gsm_at_1mm} onChange={v => update('kappa_gsm_at_1mm', v)} />
-        <Field label="Thickness (mm)" value={form.kappa_thickness_mm} onChange={v => update('kappa_thickness_mm', v)} />
-        <SheetDimensionField label="Sheet L (in)" valueMm={form.kappa_sheet_length_mm} onChange={value => update('kappa_sheet_length_mm', value)} />
-      </div>
-      <div className="form-grid-4" style={{ marginBottom: 20 }}>
-        <Field label="UPS (Sheets)" value={form.kappa_ups} onChange={v => update('kappa_ups', v)} />
-        <Field label="Order Quantity" value={form.quantity} onChange={v => update('quantity', v)} />
-        <Field label="Wastage (%)" value={form.kappa_wastage_percent} onChange={v => update('kappa_wastage_percent', v)} />
-        <SheetDimensionField label="Sheet W (in)" valueMm={form.kappa_sheet_width_mm} onChange={value => update('kappa_sheet_width_mm', value)} />
-      </div>
-
-      <div style={{ marginBottom: 20 }}>
-        <div className="form-label" style={{ marginBottom: 8 }}>Rate Configuration (₹/kg)</div>
-        <RateConfigRow
-          masterRate={form.kappa_master_rate}
-          overrideRate={form.kappa_override_rate}
-          effectiveRate={effectiveRate}
-          onOverrideChange={v => update('kappa_override_rate', v)}
-          onReset={() => update('kappa_override_rate', null)}
-        />
-      </div>
-
       <div className="grid-col-6-4" style={{ gap: 16 }}>
-          {line ? <CalcTracePanel
-            rows={line.trace.map(t => ({ label: t.label, value: t.value }))}
-            formula={line.formula}
-          /> : <div />}
-          <ModuleResultCard line={line} />
+        {line ? <CalcTracePanel rows={line.trace.map(t => ({ label: t.label, value: t.value }))} formula={line.formula} /> : <div />}
+        <ModuleResultCard line={line} />
       </div>
     </div>
   );
@@ -977,9 +1313,15 @@ function PrintingModule({ form, update, masterRates, line }) {
       <div className="grid-col-6-4" style={{ gap: 16, marginBottom: 20 }}>
         <div>
           <div className="form-grid-4" style={{ marginBottom: 16 }}>
-            <Field label="Printing Method" options={['Offset', 'Digital']} value={form.print_method} onChange={value => update('print_method', value)} />
-            <Field label="Colour Configuration" options={['1 Colour', '2 Colour', '4-Color CMYK', '5 Colour']} value={form.print_colour_configuration} onChange={value => update('print_colour_configuration', value)} />
-            <Field label="Printing Size (mm)" type="text" value={`${form.lamination_sheet_length_in * 25.4 | 0} × ${form.lamination_sheet_width_in * 25.4 | 0}`} readOnly />
+            <Field label="Printing Method" options={[{ value: '', label: 'Select method' }, 'Offset', 'Digital']} value={form.print_method} onChange={value => update('print_method', value)} />
+            <Field label="Colour Configuration" type="text" placeholder="Enter any colour setup" suggestions={['1 Colour', '2 Colour', '4-Color CMYK', '5 Colour']} value={form.print_colour_configuration} onChange={value => update('print_colour_configuration', value)} />
+            <Field
+              label="Sheet Size (in)"
+              type="text"
+              value={form.lamination_sheet_length_in && form.lamination_sheet_width_in
+                ? `${form.lamination_sheet_length_in} × ${form.lamination_sheet_width_in}` : ''}
+              readOnly
+            />
           </div>
           <div className="form-grid-4" style={{ marginBottom: 16 }}>
             <Field label="UPS / Quantity" value={form.wrapper_ups} readOnly />
@@ -996,15 +1338,23 @@ function PrintingModule({ form, update, masterRates, line }) {
               onReset={() => update('print_override_rate', null)}
               label="First 1,000 sheets (₹ flat)"
             />
-            <div style={{ fontSize: 11, color: 'var(--muted-2)', marginTop: 6 }}>Additional sheets: ₹ {Number(form.print_additional_rate || 0).toFixed(2)} each</div>
+            <div style={{ fontSize: 11, color: 'var(--muted-2)', marginTop: 6 }}>
+              Additional sheets: {form.print_additional_rate == null ? '—' : `₹ ${Number(form.print_additional_rate).toFixed(2)}`} each
+            </div>
           </div>
           <div>
             <div className="form-label" style={{ marginBottom: 8 }}>Sheet Size</div>
-            <Field label="" options={[{ value: '15x20', label: '15 × 20 in' }, { value: '20x28', label: '20 × 28 in' }, { value: '28x40', label: '28 × 40 in' }]} value={form.print_sheet_size} onChange={value => {
+            <Field label="" options={[{ value: '', label: 'Select sheet size' }, { value: '15x20', label: '15 × 20 in' }, { value: '20x28', label: '20 × 28 in' }, { value: '28x40', label: '28 × 40 in' }]} value={form.print_sheet_size} onChange={value => {
+              if (!value) {
+                update('print_sheet_size', '');
+                update('print_master_rate', null);
+                update('print_additional_rate', null);
+                return;
+              }
               const [firstKey, additionalKey] = PRINT_RATE_KEYS[value];
               update('print_sheet_size', value);
-              update('print_master_rate', masterRates?.[firstKey] ?? form.print_master_rate);
-              update('print_additional_rate', masterRates?.[additionalKey] ?? form.print_additional_rate);
+              update('print_master_rate', masterRates?.[firstKey] ?? null);
+              update('print_additional_rate', masterRates?.[additionalKey] ?? null);
             }} />
           </div>
         </div>
@@ -1032,8 +1382,9 @@ function PrintingModule({ form, update, masterRates, line }) {
 
 // ── Lamination ─────────────────────────────────────────────
 function LaminationModule({ form, update, masterRates, line }) {
-  const finishKey = form.lamination_finish.toLowerCase().replace(' ', '_');
-  const masterRate = form.lamination_method_finish_rates?.[`${form.lamination_type}_${finishKey}`] || null;
+  const finishKey = (form.lamination_finish || '').toLowerCase().replace(' ', '_');
+  const finishRate = form.lamination_method_finish_rates?.[`${form.lamination_type}_${finishKey}`];
+  const masterRate = finishRate > 0 ? finishRate : masterRates?.[`lamination_${form.lamination_type}`] ?? null;
   return (
     <div className="panel">
       <div className="panel-header">
@@ -1041,15 +1392,18 @@ function LaminationModule({ form, update, masterRates, line }) {
         <div className="panel-sub">Cost = Sheet Area × Rate / 100 sq.in × Final Wrapper Sheets</div>
       </div>
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Method" options={['thermal', 'cold', 'dry']} value={form.lamination_type} onChange={value => {
+        <Field label="Method" options={[{ value: '', label: 'Select method' }, 'thermal', 'cold', 'dry']} value={form.lamination_type} onChange={value => {
           update('lamination_type', value);
-          const rate = form.lamination_method_finish_rates?.[`${value}_${finishKey}`] || null;
+          const configuredRate = form.lamination_method_finish_rates?.[`${value}_${finishKey}`];
+          const rate = configuredRate > 0 ? configuredRate : masterRates?.[`lamination_${value}`] ?? null;
           update('lam_master_rate', rate);
         }} />
-        <Field label="Finish" options={['Matte', 'Gloss', 'Soft Touch', 'Other']} value={form.lamination_finish} onChange={value => {
+        <Field label="Finish" options={[{ value: '', label: 'Select finish' }, 'Matte', 'Gloss', 'Soft Touch', 'Other']} value={form.lamination_finish} onChange={value => {
           update('lamination_finish', value);
           const key = value.toLowerCase().replace(' ', '_');
-          update('lam_master_rate', form.lamination_method_finish_rates?.[`${form.lamination_type}_${key}`] || null);
+          const configuredRate = form.lamination_method_finish_rates?.[`${form.lamination_type}_${key}`];
+          const rate = configuredRate > 0 ? configuredRate : masterRates?.[`lamination_${form.lamination_type}`] ?? null;
+          update('lam_master_rate', rate);
         }} />
         <Field label="Sheet L (in)" value={form.lamination_sheet_length_in} onChange={v => update('lamination_sheet_length_in', v)} />
         <Field label="Sheet W (in)" value={form.lamination_sheet_width_in} onChange={v => update('lamination_sheet_width_in', v)} />
@@ -1091,7 +1445,7 @@ function GlueModule({ form, update, masterRates, line }) {
             <input className="form-input" type="number" value={gl.rate_per_kg} onChange={e => updateLine(i, 'rate_per_kg', e.target.value === '' ? '' : Number(e.target.value))} />
           </div>
         ))}
-        <button className="btn btn-secondary btn-sm" onClick={() => update('glue_lines', [...form.glue_lines, { name: 'Component', area_sq_in: 0, gsm: 20, rate_per_kg: masterRates?.glue_rate_per_kg ?? 90 }])}>
+        <button className="btn btn-secondary btn-sm" onClick={() => update('glue_lines', [...form.glue_lines, { name: '', area_sq_in: '', gsm: '', rate_per_kg: masterRates?.glue_rate_per_kg ?? '' }])}>
           <Plus size={13} /> Add Component
         </button>
       </div>
@@ -1112,9 +1466,9 @@ function PunchingModule({ form, update, masterRates, line }) {
         <div className="panel-sub">Cost = (Qty ÷ Speed + Setup Hrs) × Machine Rate</div>
       </div>
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Material" options={['Kappa', 'Wrapper', 'FBB', 'Duplex', 'Foam/EVA/EPE']} value={form.punching_material} onChange={value => {
+        <Field label="Material" options={[{ value: '', label: 'Select material' }, 'Kappa', 'Wrapper', 'FBB', 'Duplex', 'Foam/EVA/EPE']} value={form.punching_material} onChange={value => {
           update('punching_material', value);
-          update('punching_speed', masterRates?.[PUNCH_SPEED_KEYS[value]] ?? form.punching_speed);
+          update('punching_speed', masterRates?.[PUNCH_SPEED_KEYS[value]] ?? '');
         }} />
         <Field label="Machine Rate (₹/hr)" value={form.punching_machine_rate_per_hour} onChange={v => update('punching_machine_rate_per_hour', v)} />
       </div>
@@ -1135,7 +1489,7 @@ function EmbellishmentsModule({ form, update, line }) {
         <div className="panel-sub">Applied cost = max(Area × Rate + Setup, Tool Cost)</div>
       </div>
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Type" options={['Gold Foil', 'Silver Foil', 'Rose Gold', 'Spot UV', 'Drip-Off', 'Embossing', 'Debossing']} value={form.embellishment_type} onChange={v => update('embellishment_type', v)} />
+        <Field label="Type" options={[{ value: '', label: 'Select type' }, 'Gold Foil', 'Silver Foil', 'Rose Gold', 'Spot UV', 'Drip-Off', 'Embossing', 'Debossing']} value={form.embellishment_type} onChange={v => update('embellishment_type', v)} />
         <Field label="Area (sq.in)" value={form.embellishment_area_sq_in} onChange={v => update('embellishment_area_sq_in', v)} />
         <Field label="Rate (₹/sq.in)" value={form.embellishment_rate_per_sq_in} onChange={v => update('embellishment_rate_per_sq_in', v)} />
         <Field label="Setup (₹)" value={form.embellishment_setup} onChange={v => update('embellishment_setup', v)} />
@@ -1176,7 +1530,7 @@ function AccessoriesModule({ form, update, line }) {
             <input className="form-input" type="number" value={a.unit_cost} onChange={e => updateAcc(i, 'unit_cost', e.target.value === '' ? '' : Number(e.target.value))} />
           </div>
         ))}
-        <button className="btn btn-secondary btn-sm" onClick={() => update('accessories', [...form.accessories, { name: 'Accessory', quantity_per_box: 1, unit_cost: 0 }])}>
+        <button className="btn btn-secondary btn-sm" onClick={() => update('accessories', [...form.accessories, { name: '', quantity_per_box: '', unit_cost: '' }])}>
           <Plus size={13} /> Add Accessory
         </button>
       </div>
@@ -1220,14 +1574,17 @@ function ConversionModule({ form, update, line }) {
         </div>
       </div>
       <div className="form-grid-4" style={{ marginBottom: 16 }}>
-        <Field label="Conversion Type" options={['Semi Automatic', 'Automatic', 'Contract']} value={form.conversion_type} onChange={value => update('conversion_type', value)} />
+        <Field label="Base material" options={['Kappa', 'FBB', 'Duplex', 'Kraft']} value={form.conversion_base_material} onChange={value => update('conversion_base_material', value)} />
+        <Field label="Conversion Type" options={[{ value: '', label: 'Select method' }, 'Semi Automatic', 'Automatic', 'Contract']} value={form.conversion_type} onChange={value => update('conversion_type', value)} />
         {form.conversion_type === 'Semi Automatic' && <>
-          <Field label="Kappa output (boxes/hour)" value={form.conversion_semi_boxes_per_hour} onChange={value => update('conversion_semi_boxes_per_hour', value)} />
-          <Field label="Labour count" value={form.conversion_semi_workers} onChange={value => update('conversion_semi_workers', value)} />
-          <Field label="Monthly salary / worker (₹)" value={form.conversion_monthly_salary} onChange={value => update('conversion_monthly_salary', value)} />
-          <Field label="Working days / month" value={form.conversion_working_days} onChange={value => update('conversion_working_days', value)} />
-          <Field label="Working hours / day" value={form.conversion_hours_per_day} onChange={value => update('conversion_hours_per_day', value)} />
-          <Field label="Side pasting (₹/box)" value={form.conversion_side_pasting_rate_per_box} onChange={value => update('conversion_side_pasting_rate_per_box', value)} />
+          {form.conversion_base_material === 'Kappa' && <>
+            <Field label="Kappa output (boxes/hour)" value={form.conversion_semi_boxes_per_hour} onChange={value => update('conversion_semi_boxes_per_hour', value)} />
+            <Field label="Labour count" value={form.conversion_semi_workers} onChange={value => update('conversion_semi_workers', value)} />
+            <Field label="Monthly salary / worker (₹)" value={form.conversion_monthly_salary} onChange={value => update('conversion_monthly_salary', value)} />
+            <Field label="Working days / month" value={form.conversion_working_days} onChange={value => update('conversion_working_days', value)} />
+            <Field label="Working hours / day" value={form.conversion_hours_per_day} onChange={value => update('conversion_hours_per_day', value)} />
+          </>}
+          {form.conversion_base_material !== 'Kappa' && <Field label="Side pasting (₹/box)" value={form.conversion_side_pasting_rate_per_box} onChange={value => update('conversion_side_pasting_rate_per_box', value)} />}
         </>}
         {form.conversion_type === 'Automatic' && <>
           <Field label="Kappa output (boxes/hour)" value={form.conversion_automatic_boxes_per_hour} onChange={value => update('conversion_automatic_boxes_per_hour', value)} />
@@ -1238,7 +1595,7 @@ function ConversionModule({ form, update, line }) {
         {form.conversion_type === 'Contract' && <Field label="Contract rate (₹/box)" value={form.conversion_contract_rate_per_box} onChange={value => update('conversion_contract_rate_per_box', value)} />}
       </div>
       <div className="info-banner">
-        FBB, Duplex and Kraft use the configured side-pasting rate with Semi Automatic selected. Automatic conversion is defined for Kappa only; other combinations remain configuration-required.
+        FBB, Duplex and Kraft use the configured side-pasting rate with Semi Automatic selected. Automatic conversion is defined for Kappa only.
       </div>
       {line && <div className="grid-col-6-4" style={{ gap: 16, marginTop: 16 }}>
         <CalcTracePanel rows={line.trace.map(item => ({ label: item.label, value: item.value }))} formula={line.formula} />
@@ -1429,15 +1786,16 @@ function StepSummary({ form, setForm, result, onCalculate, onComponentsChange, o
 }
 
 // ── Step 5: Quotation / Proforma ───────────────────────────
-function StepQuotation({ form, result, customer, jobName, onBack, onSave, saving }) {
-  const [docType, setDocType] = useState('Quotation');
+function StepQuotation({ form, result, customer, jobName, draft, onDraftChange, onBack, onSave, saving }) {
+  const [docType, setDocType] = useState(draft?.docType || 'Quotation');
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
   const [pdfAction, setPdfAction] = useState('');
   const [pdfError, setPdfError] = useState('');
-  const [numberEdited, setNumberEdited] = useState(false);
+  const [numberEdited, setNumberEdited] = useState(draft?.numberEdited || false);
   const [customerRecords, setCustomerRecords] = useState([]);
-  const [addressEdited, setAddressEdited] = useState(false);
+  const [addressEdited, setAddressEdited] = useState(draft?.addressEdited || false);
   const [document, setDocument] = useState(() => {
+    if (draft?.document) return draft.document;
     const localDate = new Date();
     localDate.setMinutes(localDate.getMinutes() - localDate.getTimezoneOffset());
     return {
@@ -1450,6 +1808,10 @@ function StepQuotation({ form, result, customer, jobName, onBack, onSave, saving
     };
   });
   const updateDocument = (key, value) => setDocument(current => ({ ...current, [key]: value }));
+
+  useEffect(() => {
+    onDraftChange({ docType, document, numberEdited, addressEdited });
+  }, [docType, document, numberEdited, addressEdited, onDraftChange]);
 
   useEffect(() => {
     let active = true;
@@ -1714,105 +2076,168 @@ function StepQuotation({ form, result, customer, jobName, onBack, onSave, saving
 // ── Main Cost Estimator Page ───────────────────────────────
 export default function CostEstimator() {
   const navigate = useNavigate();
-  const [step,       setStep]       = useState(0);
-  const [form,       setForm]       = useState(INITIAL_FORM);
+  const [restoredDraft] = useState(readEstimatorDraft);
+  const [step,       setStep]       = useState(() => restoredDraft?.step ?? 0);
+  const [form,       setForm]       = useState(() => ({
+    ...INITIAL_FORM,
+    ...restoredDraft?.form,
+    components: (restoredDraft?.form?.components || []).map(applyConfirmedDuplexSheetSize),
+  }));
   const [masterRates, setMasterRates] = useState(null);
-  const [result,     setResult]     = useState(null);
-  const [moduleResults, setModuleResults] = useState({});
-  const [moduleSnapshots, setModuleSnapshots] = useState({});
+  const [result,     setResult]     = useState(() => restoredDraft?.result ?? null);
+  const [calculationError, setCalculationError] = useState('');
+  const [moduleResults, setModuleResults] = useState(() => restoredDraft?.moduleResults ?? {});
+  const [moduleSnapshots, setModuleSnapshots] = useState(() => restoredDraft?.moduleSnapshots ?? {});
   const [calculatingAll, setCalculatingAll] = useState(false);
   const [calculatingModule, setCalculatingModule] = useState(null);
-  const [customer,   setCustomer]   = useState('Luxe Beauty Pvt Ltd');
-  const [jobName,    setJobName]    = useState('Premium Rigid Box - Skincare');
+  const [customer,   setCustomer]   = useState(() => restoredDraft?.customer ?? '');
+  const [jobName,    setJobName]    = useState(() => restoredDraft?.jobName ?? '');
   const [toast,      setToast]      = useState(null);
-  const [estimateId, setEstimateId] = useState(null);   // persisted DB id
+  const [estimateId, setEstimateId] = useState(() => restoredDraft?.estimateId ?? null);   // persisted DB id
+  const [quotationDraft, setQuotationDraft] = useState(() => restoredDraft?.quotationDraft ?? null);
+  const [configurationInitialized, setConfigurationInitialized] = useState(() => restoredDraft?.configurationInitialized ?? false);
+  const configurationInitializedRef = useRef(restoredDraft?.configurationInitialized ?? false);
+  const [masterConfigVersion, setMasterConfigVersion] = useState(() => restoredDraft?.masterConfigVersion ?? '');
+  const [calculationRevision, setCalculationRevision] = useState(0);
+  const masterConfigVersionRef = useRef(restoredDraft?.masterConfigVersion ?? '');
   const [saving,     setSaving]     = useState(false);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(ESTIMATOR_DRAFT_KEY, JSON.stringify({
+        step, form, result, moduleResults, moduleSnapshots, customer, jobName, estimateId, quotationDraft, configurationInitialized, masterConfigVersion,
+      }));
+    } catch {}
+  }, [step, form, result, moduleResults, moduleSnapshots, customer, jobName, estimateId, quotationDraft, configurationInitialized, masterConfigVersion]);
 
   const showToast = (msg, isErr = false) => {
     setToast({ msg, isErr });
     setTimeout(() => setToast(null), 3500);
   };
 
+  const invalidateCalculation = () => {
+    setResult(null);
+    setModuleResults({});
+    setModuleSnapshots({});
+    setCalculationError('');
+  };
+
   useEffect(() => {
     let active = true;
-    getMasterConfig().then(({ rates }) => {
-      if (!active || !rates) return;
-      setMasterRates(rates);
-      setForm(current => {
-        const [printFirstKey, printAdditionalKey] = PRINT_RATE_KEYS[current.print_sheet_size];
-        const materialRateKey = { 'Kappa Board': 'kappa_rate_per_kg', FBB: 'fbb_rate_per_kg', 'Duplex Board': 'duplex_board_rate_per_kg' }[current.kappa_material];
-        const punchingSpeedKey = PUNCH_SPEED_KEYS[current.punching_material];
-        return {
-          ...current,
-          kappa_master_rate: rates[materialRateKey] ?? current.kappa_master_rate,
-          kappa_rate_per_kg: rates[materialRateKey] ?? current.kappa_rate_per_kg,
-          fbb_rate_per_kg: rates.fbb_rate_per_kg ?? current.fbb_rate_per_kg,
-          duplex_board_rate_per_kg: rates.duplex_board_rate_per_kg ?? current.duplex_board_rate_per_kg,
-          wrapper_master_rate: rates.wrapper_rate_per_kg ?? current.wrapper_master_rate,
-          wrapper_rate_per_kg: rates.wrapper_rate_per_kg ?? current.wrapper_rate_per_kg,
-          wrapper_make_ready_sheets: rates.wrapper_make_ready_sheets ?? current.wrapper_make_ready_sheets,
-          print_master_rate: rates[printFirstKey] ?? current.print_master_rate,
-          print_additional_rate: rates[printAdditionalKey] ?? current.print_additional_rate,
-          lam_master_rate: rates[`lamination_${current.lamination_type}`] ?? current.lam_master_rate,
-          lamination_method_finish_rates: Object.fromEntries(
-            ['thermal', 'cold', 'dry'].flatMap(method => ['matte', 'gloss', 'soft_touch', 'other'].map(finish => {
-              const key = `${method}_${finish}`;
-              return [key, rates[`lamination_rate_${key}`] ?? 0];
-            })),
-          ),
-          glue_lines: current.glue_lines.map(line => ({ ...line, rate_per_kg: rates.glue_rate_per_kg ?? line.rate_per_kg })),
-          punching_machine_rate_per_hour: rates.punching_machine_rate_per_hour ?? current.punching_machine_rate_per_hour,
-          punching_speed: rates[punchingSpeedKey] ?? current.punching_speed,
-          punching_setup_hours: rates.punching_setup_hours ?? current.punching_setup_hours,
-          conversion_semi_boxes_per_hour: rates.conversion_semi_boxes_per_hour ?? current.conversion_semi_boxes_per_hour,
-          conversion_semi_workers: rates.conversion_semi_workers ?? current.conversion_semi_workers,
-          conversion_monthly_salary: rates.conversion_monthly_salary ?? current.conversion_monthly_salary,
-          conversion_working_days: rates.conversion_working_days ?? current.conversion_working_days,
-          conversion_hours_per_day: rates.conversion_hours_per_day ?? current.conversion_hours_per_day,
-          conversion_side_pasting_rate_per_box: rates.conversion_side_pasting_rate_per_box ?? current.conversion_side_pasting_rate_per_box,
-          conversion_automatic_boxes_per_hour: rates.conversion_automatic_boxes_per_hour ?? current.conversion_automatic_boxes_per_hour,
-          conversion_automatic_machine_rate: rates.conversion_automatic_machine_rate ?? current.conversion_automatic_machine_rate,
-          conversion_automatic_setup_rate: rates.conversion_automatic_setup_rate ?? current.conversion_automatic_setup_rate,
-          conversion_automatic_setup_hours: rates.conversion_automatic_setup_hours ?? current.conversion_automatic_setup_hours,
-          conversion_contract_rate_per_box: rates.conversion_contract_rate_per_box ?? current.conversion_contract_rate_per_box,
-          foiling_rate_per_100_sq_in: rates.foiling_rate_per_100_sq_in ?? current.foiling_rate_per_100_sq_in,
-          spot_uv_rate_per_100_sq_in: rates.spot_uv_rate_per_100_sq_in ?? current.spot_uv_rate_per_100_sq_in,
-          drip_off_rate_per_100_sq_in: rates.drip_off_rate_per_100_sq_in ?? current.drip_off_rate_per_100_sq_in,
-          embossing_cost_per_box: rates.embossing_cost_per_box ?? current.embossing_cost_per_box,
-          debossing_cost_per_box: rates.debossing_cost_per_box ?? current.debossing_cost_per_box,
-          punching_die_15x20: rates.punching_die_15x20 ?? current.punching_die_15x20,
-          punching_die_20x28: rates.punching_die_20x28 ?? current.punching_die_20x28,
-          punching_die_25x36: rates.punching_die_25x36 ?? current.punching_die_25x36,
-          punching_die_28x40: rates.punching_die_28x40 ?? current.punching_die_28x40,
-          emboss_deboss_die_rate_per_sq_cm: rates.emboss_deboss_die_rate_per_sq_cm ?? current.emboss_deboss_die_rate_per_sq_cm,
-          foil_stamp_die_rate_per_sq_cm: rates.foil_stamp_die_rate_per_sq_cm ?? current.foil_stamp_die_rate_per_sq_cm,
-          embellishment_rate_per_sq_in: rates.embellishment_rate_per_sq_in ?? current.embellishment_rate_per_sq_in,
-          embellishment_setup: rates.embellishment_setup ?? current.embellishment_setup,
-          embellishment_minimum: rates.embellishment_minimum ?? current.embellishment_minimum,
-        };
-      });
-    }).catch(() => {});
-    return () => { active = false; };
+    const refreshMasterRates = async () => {
+      try {
+        const { rates, version } = await getMasterConfig();
+        if (!active || !rates) return;
+        const previousVersion = masterConfigVersionRef.current;
+        const changed = Boolean(previousVersion && version && previousVersion !== version);
+        const restoredResultNeedsRefresh = Boolean(restoredDraft?.result && !previousVersion);
+        const initializeEstimateDefaults = !configurationInitializedRef.current;
+        setMasterRates(rates);
+        setForm(current => ({
+          ...applyMasterRatesToForm(current, rates),
+          ...(initializeEstimateDefaults ? { margin_percent: rates.default_margin_percent ?? '' } : {}),
+        }));
+        configurationInitializedRef.current = true;
+        setConfigurationInitialized(true);
+        masterConfigVersionRef.current = version || '';
+        setMasterConfigVersion(version || '');
+        if (changed || restoredResultNeedsRefresh) {
+          setResult(null);
+          setModuleResults({});
+          setModuleSnapshots({});
+          setCalculationError('');
+          setCalculationRevision(revision => revision + 1);
+        }
+      } catch (error) {
+        if (active) setCalculationError(error.message || 'Unable to load Master Configuration');
+      }
+    };
+    const onMasterConfigChanged = () => { refreshMasterRates(); };
+    const onStorage = event => {
+      if (event.key === 'pacfully_master_config_updated') onMasterConfigChanged();
+    };
+    refreshMasterRates();
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('pacfully-master-config-updated', onMasterConfigChanged);
+    return () => {
+      active = false;
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('pacfully-master-config-updated', onMasterConfigChanged);
+    };
   }, []);
+
+  useEffect(() => {
+    if (step !== 2 || !Number(form.quantity)) {
+      setCalculatingAll(false);
+      return;
+    }
+    if (calculatingModule) {
+      setCalculatingAll(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setCalculatingAll(true);
+    const timeout = setTimeout(async () => {
+      setCalculationError('');
+      try {
+        const response = await fetch(`${API_BASE}/estimates/calculate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(calculationPayload(form)),
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(formatCalculationError(error.detail, 'Unable to update estimate'));
+        }
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        setResult(data);
+        setModuleResults({});
+        setModuleSnapshots(data.wrapper_final_sheets != null
+          ? { Wrapper: moduleInputs('Wrapper', form) }
+          : {});
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setCalculationError(error.message || 'Unable to update estimate');
+          setResult(null);
+          setModuleResults({});
+        }
+      } finally {
+        if (!controller.signal.aborted) setCalculatingAll(false);
+      }
+    }, 400);
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [form, step, calculatingModule, calculationRevision]);
 
   // ── Calculate (stateless — no DB write) ────────────────
   const handleCalculate = async () => {
     if (calculatingAll || calculatingModule) return;
+    if (componentsForModule(form.components, 'Accessories').length && !form.accessories.length) {
+      showToast('Add accessory values before calculating Accessories.', true);
+      return;
+    }
     setCalculatingAll(true);
     try {
       const res = await fetch(`${API_BASE}/estimates/calculate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(calculationPayload(form)),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.detail || 'Unable to calculate estimate');
+        throw new Error(formatCalculationError(error.detail, 'Unable to calculate estimate'));
       }
       const data = await res.json();
       setResult(data);
       setModuleResults({});
       setModuleSnapshots({ Wrapper: moduleInputs('Wrapper', form) });
+      setCalculationError('');
       showToast('Calculation complete — all modules updated');
     } catch (error) {
       showToast(error.message || 'Calculation failed. Please try again.', true);
@@ -1823,6 +2248,27 @@ export default function CostEstimator() {
 
   const handleCalculateModule = async (module) => {
     if (calculatingAll || calculatingModule) return;
+    setCalculationError('');
+    const applicableComponents = componentsForModule(form.components, module);
+    if (module === 'Glue' && applicableComponents.length === 0) {
+      if (!form.glue_lines.length) {
+        setCalculationError('Add a Glue component, then enter its area and GSM before calculating.');
+        return;
+      }
+      const incompleteLine = form.glue_lines.some(line =>
+        !String(line.name || '').trim()
+        || !Number.isFinite(Number(line.area_sq_in)) || Number(line.area_sq_in) <= 0
+        || !Number.isFinite(Number(line.gsm)) || Number(line.gsm) <= 0,
+      );
+      if (incompleteLine) {
+        setCalculationError('Complete each Glue row with a component name, area greater than 0, and GSM greater than 0.');
+        return;
+      }
+    }
+    if (module === 'Accessories' && componentsForModule(form.components, module).length && !form.accessories.length) {
+      showToast('Add accessory values before calculating Accessories.', true);
+      return;
+    }
     const wrapperSnapshot = moduleSnapshots.Wrapper;
     const currentWrapperInputs = moduleInputs('Wrapper', form);
     const wrapperIsCurrent = wrapperSnapshot
@@ -1849,22 +2295,28 @@ export default function CostEstimator() {
           .filter(item => item.module !== module)
           .map(item => moduleResults[item.module]?.total_cost ?? item.total_cost)
         : undefined;
+      const requestBody = { module, inputs, estimate_id: estimateId, other_module_totals: otherModuleTotals };
+      if (applicableComponents.length > 0) requestBody.components = form.components;
       const res = await fetch(`${API_BASE}/estimates/calculate/module`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ module, inputs, components: form.components, estimate_id: estimateId, other_module_totals: otherModuleTotals }),
+        body: JSON.stringify(requestBody),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        const detail = Array.isArray(error.detail)
-          ? error.detail.map(item => item.msg).join('; ')
-          : error.detail;
+        const detail = formatCalculationError(error.detail, '');
         throw new Error(detail || `Unable to calculate ${module}`);
       }
       const data = await res.json();
       if (!data.line) {
-        const missing = data.configuration_required?.length ? data.configuration_required.join(', ') : module;
-        throw new Error(`${missing} is CONFIGURATION REQUIRED. No costing row was created.`);
+        const details = (data.configuration_details || [])
+          .map(detail => `${detail.component_label ? `${detail.component_label}: ` : ''}${detail.detail}`)
+          .filter(Boolean);
+        setCalculationError(details.length
+          ? `${module === 'Kappa' ? 'Base Material' : module}: ${details.join('; ')}`
+          : `${module === 'Kappa' ? 'Base Material' : module} is configuration-required. Check component inputs and master configuration.`);
+        setModuleResults(previous => ({ ...previous, [module]: null }));
+        return;
       }
       const nextLine = { ...data.line };
       if (module === 'Wrapper') nextLine.wrapper_final_sheets = data.wrapper_final_sheets;
@@ -1875,41 +2327,49 @@ export default function CostEstimator() {
       }
       showToast(`${module} calculation complete`);
     } catch (error) {
-      showToast(error.message || `${module} calculation failed. Please try again.`, true);
+      setCalculationError(error.message || `${module} calculation failed. Please try again.`);
     } finally {
       setCalculatingModule(null);
     }
   };
 
-  const handleComponentsChange = async (components) => {
-    const hasPriorCalculation = Boolean(result) || Object.keys(moduleResults).length > 0;
+  const handleComponentsChange = (components) => {
     setForm(current => ({ ...current, components }));
+    setResult(null);
     setModuleResults({});
-    if (!hasPriorCalculation) return;
-    setCalculatingAll(true);
-    try {
-      const response = await fetch(`${API_BASE}/estimates/calculate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, components }),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.detail || 'Unable to update component routing');
-      }
-      setResult(await response.json());
-    } catch (error) {
-      showToast(error.message || 'Unable to update component routing', true);
-    } finally {
-      setCalculatingAll(false);
-    }
   };
 
   const handleLayoutExtracted = extraction => {
     const documentFields = extraction?.document_fields || {};
     const quantity = documentFields.quantity?.normalized_value;
+    const extractedComponents = (extraction?.components || []).map(applyConfirmedDuplexSheetSize);
+    if (extractedComponents.length) handleComponentsChange(extractedComponents);
+    const baseMaterialComponent = extraction?.components?.find(component =>
+      component.processes?.['Base Material'] === true && component.process_inputs?.Kappa,
+    );
+    const baseMaterialName = baseMaterialComponent?.material?.toUpperCase() || '';
+    const kappaMaterial = baseMaterialName.includes('KAPPA') ? 'Kappa Board'
+      : baseMaterialName.includes('FBB') ? 'FBB'
+        : baseMaterialName.includes('DUPLEX') ? 'Duplex Board' : '';
+    const materialRateKey = baseMaterialRateKey(baseMaterialName || kappaMaterial);
+    const materialRate = masterRates?.[materialRateKey] ?? '';
+    const kappaInputs = baseMaterialComponent?.process_inputs?.Kappa || {};
     const wrapperComponent = extraction?.components?.find(component => component.processes?.Wrapper === true);
     const wrapperInputs = wrapperComponent?.process_inputs?.Wrapper || {};
+    const laminationComponent = extraction?.components?.find(component =>
+      component.processes?.Lamination === true && component.extracted_fields?.lamination_finish?.normalized_value,
+    );
+    const laminationFinish = laminationComponent?.extracted_fields?.lamination_finish?.normalized_value || '';
+    const punchingComponent = extraction?.components?.find(component => component.processes?.Punching === true);
+    const punchingMaterialName = punchingComponent?.material?.toUpperCase() || '';
+    const punchingMaterial = punchingMaterialName.includes('KAPPA') ? 'Kappa'
+      : punchingMaterialName.includes('ART PAPER') ? 'Wrapper'
+        : punchingMaterialName.includes('DUPLEX') ? 'Duplex'
+          : punchingMaterialName.includes('FBB') ? 'FBB' : '';
+    const wrapperLengthIn = Number.isFinite(wrapperInputs.wrapper_sheet_length_mm)
+      ? mmToInches(wrapperInputs.wrapper_sheet_length_mm) : '';
+    const wrapperWidthIn = Number.isFinite(wrapperInputs.wrapper_sheet_width_mm)
+      ? mmToInches(wrapperInputs.wrapper_sheet_width_mm) : '';
     const wrapperSheetSize = [wrapperInputs.wrapper_sheet_length_mm, wrapperInputs.wrapper_sheet_width_mm]
       .every(Number.isFinite)
       ? [wrapperInputs.wrapper_sheet_length_mm, wrapperInputs.wrapper_sheet_width_mm]
@@ -1919,12 +2379,33 @@ export default function CostEstimator() {
       : null;
     setForm(current => ({
       ...current,
-      ...(Number.isInteger(quantity) && quantity > 0 ? { quantity } : {}),
-      ...(wrapperInputs.wrapper_gsm != null ? { wrapper_gsm: wrapperInputs.wrapper_gsm } : {}),
-      ...(wrapperInputs.wrapper_ups != null ? { wrapper_ups: wrapperInputs.wrapper_ups } : {}),
-      ...(wrapperInputs.wrapper_sheet_length_mm != null ? { wrapper_sheet_length_mm: wrapperInputs.wrapper_sheet_length_mm } : {}),
-      ...(wrapperInputs.wrapper_sheet_width_mm != null ? { wrapper_sheet_width_mm: wrapperInputs.wrapper_sheet_width_mm } : {}),
-      ...(wrapperSheetSize && PRINT_RATE_KEYS[wrapperSheetSize] ? { print_sheet_size: wrapperSheetSize } : {}),
+      quantity: Number.isInteger(quantity) && quantity > 0 ? quantity : '',
+      kappa_material: kappaMaterial,
+      kappa_master_rate: materialRate === '' ? null : materialRate,
+      kappa_rate_per_kg: materialRate,
+      kappa_gsm_at_1mm: Number.isFinite(kappaInputs.kappa_gsm_at_1mm) ? kappaInputs.kappa_gsm_at_1mm : '',
+      kappa_thickness_mm: Number.isFinite(kappaInputs.kappa_thickness_mm) ? kappaInputs.kappa_thickness_mm : '',
+      kappa_sheet_length_mm: Number.isFinite(kappaInputs.kappa_sheet_length_mm) ? kappaInputs.kappa_sheet_length_mm : '',
+      kappa_sheet_width_mm: Number.isFinite(kappaInputs.kappa_sheet_width_mm) ? kappaInputs.kappa_sheet_width_mm : '',
+      kappa_ups: Number.isFinite(kappaInputs.kappa_ups) ? kappaInputs.kappa_ups : '',
+      wrapper_gsm: Number.isFinite(wrapperInputs.wrapper_gsm) ? wrapperInputs.wrapper_gsm : '',
+      wrapper_ups: Number.isFinite(wrapperInputs.wrapper_ups) ? wrapperInputs.wrapper_ups : '',
+      wrapper_sheet_length_mm: Number.isFinite(wrapperInputs.wrapper_sheet_length_mm) ? wrapperInputs.wrapper_sheet_length_mm : '',
+      wrapper_sheet_width_mm: Number.isFinite(wrapperInputs.wrapper_sheet_width_mm) ? wrapperInputs.wrapper_sheet_width_mm : '',
+      print_sheet_size: wrapperSheetSize && PRINT_RATE_KEYS[wrapperSheetSize] ? wrapperSheetSize : '',
+      print_method: '',
+      print_colour_configuration: '',
+      print_master_rate: wrapperSheetSize && PRINT_RATE_KEYS[wrapperSheetSize]
+        ? masterRates?.[PRINT_RATE_KEYS[wrapperSheetSize][0]] ?? null : null,
+      print_additional_rate: wrapperSheetSize && PRINT_RATE_KEYS[wrapperSheetSize]
+        ? masterRates?.[PRINT_RATE_KEYS[wrapperSheetSize][1]] ?? null : null,
+      lamination_type: 'thermal',
+      lamination_finish: laminationFinish,
+      lamination_sheet_length_in: wrapperLengthIn,
+      lamination_sheet_width_in: wrapperWidthIn,
+      punching_material: punchingMaterial,
+      punching_speed: PUNCH_SPEED_KEYS[punchingMaterial] ? masterRates?.[PUNCH_SPEED_KEYS[punchingMaterial]] ?? '' : '',
+      punching_setup_hours: masterRates?.punching_setup_hours ?? '',
       layout_extraction: extraction ? {
         document_fields: documentFields,
         layout_dimensions: extraction.layout_dimensions || [],
@@ -1933,8 +2414,8 @@ export default function CostEstimator() {
         vision_used: Boolean(extraction.vision_used),
       } : {},
     }));
-    if (documentFields.project_name?.value) setJobName(documentFields.project_name.value);
-    if (documentFields.customer_name?.value) setCustomer(documentFields.customer_name.value);
+    setJobName(documentFields.project_name?.value || '');
+    setCustomer(documentFields.customer_name?.value || '');
   };
 
   // ── Save Draft to DB ────────────────────────────────────
@@ -1944,7 +2425,7 @@ export default function CostEstimator() {
       const res = await fetch(`${API_BASE}/estimates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, customer_name: customer, job_name: jobName }),
+        body: JSON.stringify({ ...calculationPayload(form), customer_name: customer, job_name: jobName }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -1961,7 +2442,7 @@ export default function CostEstimator() {
   const handleSave = async (document) => {
     setSaving(true);
     try {
-      const saved = await saveEstimate({ ...form, customer_name: customer, job_name: jobName });
+      const saved = await saveEstimate({ ...calculationPayload(form), customer_name: customer, job_name: jobName });
       const eid = saved.estimate_id;
       setEstimateId(eid);
 
@@ -1976,6 +2457,7 @@ export default function CostEstimator() {
         gst_percent: Number(document.gst_percent),
         validity_days: Number(document.validity_days),
       });
+      window.sessionStorage.removeItem(ESTIMATOR_DRAFT_KEY);
       showToast(`Estimate finalized — ${saved.estimate_number}`);
       setTimeout(() => navigate('/estimates'), 1400);
     } catch (e) {
@@ -2012,13 +2494,13 @@ export default function CostEstimator() {
         <StepTechnicalData form={form} setForm={setForm} components={form.components} onComponentsChange={handleComponentsChange} onNext={() => setStep(2)} onBack={() => setStep(0)} />
       )}
       {step === 2 && (
-        <StepCostingModules form={form} setForm={setForm} masterRates={masterRates} result={result} moduleResults={moduleResults} onCalculate={handleCalculate} onCalculateModule={handleCalculateModule} calculatingAll={calculatingAll} calculatingModule={calculatingModule} components={form.components} onComponentsChange={handleComponentsChange} onNext={() => setStep(3)} onBack={() => setStep(1)} />
+        <StepCostingModules form={form} setForm={setForm} masterRates={masterRates} result={result} moduleResults={moduleResults} onCalculate={handleCalculate} onCalculateModule={handleCalculateModule} calculatingAll={calculatingAll} calculatingModule={calculatingModule} components={form.components} onComponentsChange={handleComponentsChange} onInputsChanged={invalidateCalculation} calculationError={calculationError} onNext={() => setStep(3)} onBack={() => setStep(1)} />
       )}
       {step === 3 && (
         <StepSummary form={form} setForm={setForm} result={result} onCalculate={handleCalculate} onComponentsChange={handleComponentsChange} onNext={() => setStep(4)} onBack={() => setStep(2)} />
       )}
       {step === 4 && (
-        <StepQuotation form={form} result={result} customer={customer} jobName={jobName} onBack={() => setStep(3)} onSave={handleSave} saving={saving} />
+        <StepQuotation form={form} result={result} customer={customer} jobName={jobName} draft={quotationDraft} onDraftChange={setQuotationDraft} onBack={() => setStep(3)} onSave={handleSave} saving={saving} />
       )}
 
       {/* Toast */}

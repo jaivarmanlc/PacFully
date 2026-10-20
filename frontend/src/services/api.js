@@ -10,6 +10,23 @@ function getToken() {
   return localStorage.getItem('pac_token') || '';
 }
 
+function formatErrorDetail(detail, fallback) {
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map(item => {
+      if (typeof item === 'string') return item;
+      if (!item || typeof item !== 'object') return '';
+      const location = Array.isArray(item.loc)
+        ? item.loc.filter(part => part !== 'body').map(String).join('.')
+        : '';
+      const message = item.msg || item.message || '';
+      return location && message ? `${location}: ${message}` : message;
+    }).filter(Boolean);
+    return messages.join('; ') || fallback;
+  }
+  return fallback;
+}
+
 async function request(method, path, body, responseType = 'json') {
   const headers = { 'Content-Type': 'application/json' };
   const tok = getToken();
@@ -27,16 +44,15 @@ async function request(method, path, body, responseType = 'json') {
     if (import.meta.env.PROD) {
       throw new Error('The public workspace API is not ready. Please try again after the deployment finishes.');
     }
-    // Token expired or invalid — clear session and reload to /login
-    localStorage.removeItem('pac_token');
-    localStorage.removeItem('pac_user');
-    window.location.href = '/login';
-    throw new Error('Session expired');
+    throw new Error('The backend requires authentication. Enable PUBLIC_APP_ACCESS=true for the public workspace.');
   }
 
   if (!res.ok) {
     let msg = `API ${method} ${path} failed (${res.status})`;
-    try { const j = await res.json(); msg = j.detail || msg; } catch {}
+    try {
+      const j = await res.json();
+      msg = formatErrorDetail(j.detail, msg);
+    } catch {}
     throw new Error(msg);
   }
 
@@ -62,7 +78,7 @@ export const extractLayout = async file => {
   const response = await fetch(`${BASE}/layout/extract`, { method: 'POST', headers, body: formData });
   if (!response.ok) {
     let message = `Unable to extract layout (${response.status})`;
-    try { message = (await response.json()).detail || message; } catch {}
+    try { message = formatErrorDetail((await response.json()).detail, message); } catch {}
     throw new Error(message);
   }
   return response.json();
